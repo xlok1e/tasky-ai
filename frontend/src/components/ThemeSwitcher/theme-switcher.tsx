@@ -1,0 +1,34 @@
+import { useTheme } from "next-themes";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "ui/tabs";
+
+export const ThemeSwitcher = () => {
+	const { theme, setTheme } = useTheme();
+
+	if (!theme) return null;
+
+	return (
+		<Tabs value={theme || "system"} onValueChange={(value) => setTheme(value)} className="w-auto">
+			<TabsList className="bg-background/90 border-none gap-1">
+				<TabsTrigger
+					value="system"
+					className={`px-1.5 hover:bg-primary/10 transition-colors duration-100 ${theme === "system" ? "bg-primary/10" : ""}`}
+				>
+					<Monitor className={`h-4 w-4 ${theme === "system" ? "text-primary" : ""}`} />
+				</TabsTrigger>
+				<TabsTrigger
+					value="light"
+					className={`px-1.5 hover:bg-primary/10 transition-colors duration-100 ${theme === "light" ? "bg-primary/10" : ""}`}
+				>
+					<Sun className={`h-4 w-4 ${theme === "light" ? "dark:text-primary" : ""}`} />
+				</TabsTrigger>
+				<TabsTrigger
+					value="dark"
+					className={`px-1.5 hover:bg-primary/10 transition-colors duration-100 ${theme === "dark" ? "bg-primary/10" : ""}`}
+				>
+					<Moon className={`h-4 w-4 ${theme === "dark" ? "text-primary" : ""}`} />
+				</TabsTrigger>
+			</TabsList>
+		</Tabs>
+	);
+};

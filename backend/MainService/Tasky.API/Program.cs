@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Tasky.Infrastructure.Persistence;
+using Tasky.Application.Interfaces;
+using Tasky.Infrastructure.ExternalServices;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +12,7 @@ builder.Services.AddControllers();
 // Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<IAiAssistantService, GeminiService>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

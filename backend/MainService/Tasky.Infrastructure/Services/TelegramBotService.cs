@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -36,86 +37,153 @@ public class TelegramBotService(
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    private async Task HandleUpdateAsync(
-        ITelegramBotClient bot,
-        Update update,
-        CancellationToken ct)
+    private async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
     {
         if (update.Message is not { } message) return;
 
-        // /start TOKEN
-        if (message.Text is { } text && text.StartsWith("/start"))
+        var chatId = message.Chat.Id;
+
+        // Обработка команды /start TOKEN
+        if (message.Text is { } text && text.StartsWith("/start "))
         {
-            var parts = text.Split(' ');
-            var token = parts.Length > 1 ? parts[1] : null;
+            var token = text.Substring(6).Trim();
+            await ProcessStartCommand(bot, chatId, token, ct, message);
+            return;
+        }
 
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                await bot.SendMessage(
-                    message.Chat.Id,
-                    "Привет! Используй кнопку входа в веб-приложении TaskyAI.",
-                    cancellationToken: ct);
-                return;
-            }
-            using var scope = scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Обработка контакта (номер телефона)
+        if (message.Contact is { } contact)
+        {
+            await ProcessPhoneNumber(bot, chatId, contact.PhoneNumber!, ct, message);
+            return;
+        }
 
-            var auth = await db.TelegramAuthTokens
-                .Include(t => t.User)
-                .FirstOrDefaultAsync(t => t.Token == token, ct);
+        // Неизвестная команда
+        await SendKeyboardMessage(bot, chatId, "👋 Привет! Нажми кнопку ниже, чтобы поделиться номером телефона:", ct);
+    }
 
-            if (auth is null || auth.IsUsed || auth.ExpiresAt < DateTime.UtcNow)
-            {
-                await bot.SendMessage(
-                    message.Chat.Id,
-                    "Недействительный или просроченный токен. Пожалуйста, сгенерируйте новый токен в веб-приложении TaskyAI.",
-                    cancellationToken: ct);
-                return;
-            }
+    private async Task ProcessStartCommand(ITelegramBotClient bot, long chatId, string token, CancellationToken ct, Message message)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-            Domain.Entities.User user;
-            if (auth.User is null)
+        var auth = await db.TelegramAuthTokens
+            .Include(t => t.User)
+            .FirstOrDefaultAsync(t => t.Token == token, ct);
 
-            {
-                user = new Domain.Entities.User
-                {
-                    TelegramId = message.Chat.Id,
-                    Username = message.From?.Username ?? string.Empty
-                };
-                db.Users.Add(user);
-                auth.User = user;
-            }
-            else
-            {
-                user = auth.User;
-                user.TelegramId = message.Chat.Id;
-                user.Username = message.From?.Username ?? user.Username;
-            }
-            auth.IsUsed = true;
-            auth.UserId = user.Id;
-
-            await db.SaveChangesAsync(ct);
-
-            await bot.SendMessage(
-                message.Chat.Id,
-                $"Привет, {user.Username}! Ты успешно вошел в TaskyAI через Telegram.",
+        if (auth is null || auth.ExpiresAt < DateTime.UtcNow)
+        {
+            await bot.SendMessage(chatId,
+                "❌ Недействительный или просроченный токен. Сгенерируйте новую ссылку в приложении.",
                 cancellationToken: ct);
             return;
         }
 
-        await bot.SendMessage(
-            message.Chat.Id,
-            "Я понимаю только команду /start TOKEN.",
+        if (auth.IsUsed)
+        {
+            await bot.SendMessage(chatId,
+                $"✅ Вы уже авторизованы! Ваш аккаунт: {auth.User?.Username ?? "Неизвестно"}",
+                cancellationToken: ct);
+            return;
+        }
+
+        await bot.SendMessage(chatId,
+            "📱 Подтвердите свою личность, поделившись номером телефона:",
+            cancellationToken: ct);
+
+        await SendKeyboardMessage(bot, chatId, "📱 Поделиться номером телефона:", ct);
+    }
+
+    private async Task ProcessPhoneNumber(ITelegramBotClient bot, long chatId, string phoneNumber, CancellationToken ct, Message message)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // Ищем последний неиспользованный токен
+        var auth = await db.TelegramAuthTokens
+            .Include(t => t.User)
+            .Where(t => !t.IsUsed && t.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(t => t.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (auth is null)
+        {
+            await bot.SendMessage(chatId,
+                "❌ Нет активных токенов авторизации. Сгенерируйте новую ссылку в приложении.",
+                cancellationToken: ct);
+            return;
+        }
+
+        // Find existing user by TelegramId first to avoid duplicate key violation
+        var existingUser = await db.Users.FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
+
+        Domain.Entities.User user;
+        if (existingUser is not null)
+        {
+            user = existingUser;
+            user.PhoneNumber = phoneNumber;
+            user.Username = message.From?.Username ?? user.Username;
+        }
+        else if (auth.User is not null)
+        {
+            user = auth.User;
+            user.TelegramId = chatId;
+            user.PhoneNumber = phoneNumber;
+            user.Username = message.From?.Username ?? user.Username;
+        }
+        else
+        {
+            user = new Domain.Entities.User
+            {
+                TelegramId = chatId,
+                PhoneNumber = phoneNumber,
+                Username = message.From?.Username ?? string.Empty
+            };
+            db.Users.Add(user);
+        }
+        auth.User = user;
+
+        auth.PhoneNumber = phoneNumber;
+        auth.IsUsed = true;
+        auth.UserId = user.Id;
+
+        await db.SaveChangesAsync(ct);
+
+        await bot.SendMessage(chatId,
+            $"✅ Авторизация успешна, {user.Username}!\n\nТеперь вы можете использовать TaskyAI через Telegram.",
+            replyMarkup: new ReplyKeyboardRemove(),
             cancellationToken: ct);
     }
 
-    private Task HandleErrorAsync(
-        ITelegramBotClient bot,
-        Exception exception,
-        CancellationToken ct)
+    private async Task SendKeyboardMessage(ITelegramBotClient bot, long chatId, string text, CancellationToken ct)
     {
-        logger.LogError(exception, "Telegram bot error");
-        return Task.CompletedTask;
+        var keyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton("📱 Поделиться номером")
+            {
+                RequestContact = true
+            }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+
+        await bot.SendMessage(chatId, text,
+            replyMarkup: keyboard,
+            cancellationToken: ct);
+    }
+
+    private async Task HandleErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken ct)
+    {
+        if (exception is Telegram.Bot.Exceptions.RequestException { InnerException: HttpRequestException })
+        {
+            logger.LogWarning("Telegram connection dropped, retrying in 5s...");
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        }
+        else
+        {
+            logger.LogError(exception, "Telegram bot error");
+        }
     }
 }
-

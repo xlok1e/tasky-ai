@@ -12,11 +12,13 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
     private readonly IJwtService _jwtService;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(AppDbContext dbContext, IJwtService jwtService)
+    public AuthController(AppDbContext dbContext, IJwtService jwtService, IConfiguration configuration)
     {
         _dbContext = dbContext;
         _jwtService = jwtService;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -39,6 +41,31 @@ public class AuthController : ControllerBase
         await _dbContext.SaveChangesAsync();
 
         return Ok(token);
+    }
+
+    [HttpPost("telegram-bot-link")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<string>> CreateTelegramBotLink()
+    {
+    	var token = Guid.NewGuid().ToString("N");
+     var auth = new TelegramAuthToken
+     {
+     	Token = token,
+     	ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+     	IsUsed = false,
+      PhoneNumber = null
+     };
+     _dbContext.TelegramAuthTokens.Add(auth);
+     await _dbContext.SaveChangesAsync();
+
+     var botUsername = _configuration["Telegram:BotUsername"];
+        if (string.IsNullOrEmpty(botUsername))
+        {
+            return BadRequest("Bot username not configured in appsettings.json");
+        }
+
+        var botLink = $"https://t.me/{botUsername}?start={token}";
+        return Ok(botLink);
     }
 
     /// <summary>

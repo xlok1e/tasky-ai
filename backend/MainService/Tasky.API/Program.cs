@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Tasky.Infrastructure.Persistence;
+using Telegram.Bot;
+using Tasky.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +29,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddScoped<Tasky.Application.Interfaces.IJwtService, Tasky.Infrastructure.Services.JwtService>();
+
+builder.Services.AddSingleton<ITelegramBotClient>(sp =>
+{
+    var token = builder.Configuration["Telegram:BotToken"]
+        ?? throw new InvalidOperationException("Telegram bot token is not configured");
+    return new TelegramBotClient(token);
+});
+
+builder.Services.AddHostedService<TelegramBotService>();
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer(options =>

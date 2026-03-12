@@ -1,35 +1,50 @@
 import axios, { InternalAxiosRequestConfig } from "axios";
-import { getCookie } from "cookies-next";
+import { getCookie, deleteCookie } from "cookies-next";
 import { toast } from "sonner";
 
-export const serverLink = "http://77.239.97.156:5350";
+const TOKEN_COOKIE = "access_token";
 
-const axiosInstance = axios.create({
-	baseURL: `${serverLink}`,
-	headers: {
-		"Content-Type": "application/json",
-	},
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+
+const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-axiosInstance.interceptors.request.use(
-	(config: InternalAxiosRequestConfig) => {
-		const token = getCookie("token");
-		if (token) config.headers.Authorization = `Bearer ${token}` as string;
-		return config;
-	},
-	(error) => {
-		return Promise.reject(error);
-	},
+apiClient.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = getCookie(TOKEN_COOKIE);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
 );
 
-axiosInstance.interceptors.response.use(
-	(response) => {
-		return response;
-	},
-	(error) => {
-		toast.error("Что-то пошло не так");
-		return Promise.reject(error);
-	},
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      deleteCookie(TOKEN_COOKIE, { path: "/" });
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      return Promise.reject(error);
+    }
+
+    const message: string =
+      error.response?.data?.message ??
+      error.response?.data ??
+      "Что-то пошло не так";
+    toast.error(typeof message === "string" ? message : "Что-то пошло не так");
+
+    return Promise.reject(error);
+  }
 );
 
-export default axiosInstance;
+export default apiClient;
+

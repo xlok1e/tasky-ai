@@ -7,6 +7,8 @@ interface TasksState {
   tasks: Task[];
   addTask: (title: string, dueDate: Date | null) => void;
   toggleTask: (id: string) => void;
+  updateTask: (id: string, patch: Partial<Pick<Task, "title" | "dueDate" | "isCompleted">>) => void;
+  deleteTask: (id: string) => void;
 }
 
 export const useTasksStore = create<TasksState>((set) => ({
@@ -44,6 +46,16 @@ export const useTasksStore = create<TasksState>((set) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, isCompleted: !t.isCompleted } : t
       ),
+    })),
+
+  updateTask: (id, patch) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+    })),
+
+  deleteTask: (id) =>
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== id),
     })),
 }));
 

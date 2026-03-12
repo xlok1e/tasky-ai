@@ -1,13 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Tasky.Application.DTOs.Requests;
+using Tasky.Application.DTOs.Responses;
+using Tasky.Application.Interfaces;
 using Tasky.Domain.Entities;
 using Tasky.Infrastructure.Persistence;
-using Tasky.Application.Interfaces;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Tasky.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[SwaggerTag("Telegram Bot Authentication endpoints")]
 public class AuthController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
@@ -21,63 +25,39 @@ public class AuthController : ControllerBase
         _configuration = configuration;
     }
 
-    /// <summary>
-    /// Создаеться одноразовый токет дял входа через ТГ бота.Токен гененрируеться в веб-приложении
-    /// После привязски токена к бользователю в боте, токен истекает.
-    /// </summary>
-    /// <returns>Возвращает строку с токеном для входа через ТГ бот
-    [HttpPost("telegram-token")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<string>> CreateTelegramToken()
+    [HttpPost("telegram-bot-link")]
+    [ProducesResponseType(typeof(TelegramBotLinkResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [SwaggerOperation(Summary = "Получить ссылку на Telegram бота", Description = "Создает токен и возвращает готовую ссылку для авторизации")]
+    public async Task<ActionResult<TelegramBotLinkResponse>> CreateTelegramBotLink()
     {
         var token = Guid.NewGuid().ToString("N");
         var auth = new TelegramAuthToken
         {
             Token = token,
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
-            IsUsed = false
+            IsUsed = false,
+            PhoneNumber = null
         };
         _dbContext.TelegramAuthTokens.Add(auth);
         await _dbContext.SaveChangesAsync();
 
-        return Ok(token);
-    }
-
-    [HttpPost("telegram-bot-link")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<string>> CreateTelegramBotLink()
-    {
-    	var token = Guid.NewGuid().ToString("N");
-     var auth = new TelegramAuthToken
-     {
-     	Token = token,
-     	ExpiresAt = DateTime.UtcNow.AddMinutes(10),
-     	IsUsed = false,
-      PhoneNumber = null
-     };
-     _dbContext.TelegramAuthTokens.Add(auth);
-     await _dbContext.SaveChangesAsync();
-
-     var botUsername = _configuration["Telegram:BotUsername"];
+        var botUsername = _configuration["Telegram:BotUsername"];
         if (string.IsNullOrEmpty(botUsername))
         {
             return BadRequest("Bot username not configured in appsettings.json");
         }
 
         var botLink = $"https://t.me/{botUsername}?start={token}";
-        return Ok(botLink);
+        return Ok(new TelegramBotLinkResponse(botLink));
     }
 
-    /// <summary>
-    /// После отправки токена подльзователем в боте, тот помечаться как ипсользованный и привязываеться к пользователю
-    /// Эндпоинт для получения JWT токена после успешного входа через ТГ бот.
-    /// </summary>
-    /// <returns>Возвращает JWT токен для доступа к API
     [HttpPost("login-with-token")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<string>> LoginWithToken([FromBody] TokenRequest request)
+    [SwaggerOperation(Summary = "Обменять Telegram токен на JWT", Description = "Получить JWT после успешной авторизации в Telegram боте")]
+    public async Task<ActionResult<string>> LoginWithToken([FromBody] TelegramAuthRequest request)
     {
         var auth = await _dbContext.TelegramAuthTokens
             .Include(t => t.User)
@@ -102,13 +82,11 @@ public class AuthController : ControllerBase
         return Ok(jwt);
     }
 
-    /// <summary>
-    /// Вспомогательный эндпоинт для проверки статуса токена, используется в боте для информирования пользователя о статусе токенa
-    /// </summary>
     [HttpGet("telegram-token/{token}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TelegramTokenStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<TokenStatus>> GetTokenStatus(string token)
+    [SwaggerOperation(Summary = "Проверить статус Telegram токена", Description = "Возвращает информацию о статусе токена авторизации")]
+    public async Task<ActionResult<TelegramTokenStatusResponse>> GetTokenStatus(string token)
     {
         var auth = await _dbContext.TelegramAuthTokens
             .Include(t => t.User)
@@ -117,21 +95,6 @@ public class AuthController : ControllerBase
         if (auth is null)
             return NotFound();
 
-        return Ok(new TokenStatus
-        {
-            IsUsed = auth.IsUsed,
-            Username = auth.User?.Username
-        });
-    }
-
-    public class TokenRequest
-    {
-        public string Token { get; set; } = string.Empty;
-    }
-
-    public class TokenStatus
-    {
-        public bool IsUsed { get; set; }
-        public string? Username { get; set; }
+        return Ok(new TelegramTokenStatusResponse(auth.IsUsed, auth.User?.Username));
     }
 }

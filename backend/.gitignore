@@ -483,3 +483,5 @@ $RECYCLE.BIN/
 
 # Local development settings with sensitive data
 appsettings.Development.json
+
+bin\Debug

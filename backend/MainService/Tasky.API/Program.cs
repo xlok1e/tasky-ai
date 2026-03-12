@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Tasky.Infrastructure.Persistence;
 using Telegram.Bot;
 using Tasky.Infrastructure.Services;
+using Tasky.Application.Interfaces;
+using Tasky.Infrastructure.ExternalServices;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,8 +16,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.EnableAnnotations();
+	c.EnableAnnotations();
 });
+builder.Services.AddScoped<IAiAssistantService, GeminiService>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

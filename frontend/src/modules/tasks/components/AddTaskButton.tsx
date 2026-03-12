@@ -8,7 +8,7 @@ export function AddTaskButton() {
   const openNew = useTaskModal((s) => s.openNew);
 
   return (
-    <Button variant="outline" className="w-fit gap-2" onClick={openNew}>
+    <Button variant="outline" className="w-fit gap-2" onClick={() => openNew()}>
       <Plus size={16} />
       Добавить задачу
     </Button>

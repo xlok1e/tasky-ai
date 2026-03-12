@@ -1,7 +1,5 @@
-import { CreateLottery } from "@modules/CreateLottery";
+import { redirect } from "next/navigation";
 
-const Page = () => {
-	return <div>in development</div>;
-};
-
-export default Page;
+export default function RootPage() {
+  redirect("/inbox");
+}

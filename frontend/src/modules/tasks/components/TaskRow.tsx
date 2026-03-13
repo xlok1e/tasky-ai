@@ -17,7 +17,7 @@ export function TaskRow({ task }: TaskRowProps) {
 
   const handleCheckedChange = (e: React.MouseEvent) => {
     e.stopPropagation();
-    toggleTask(task.id);
+    toggleTask(task);
   };
 
   return (

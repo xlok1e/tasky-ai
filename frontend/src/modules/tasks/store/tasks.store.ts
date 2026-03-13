@@ -1,86 +1,128 @@
 import { create } from "zustand";
-import type { Task } from "../types/task.types";
-
-let nextId = 4;
+import {
+	fetchTasks as apiFetchTasks,
+	createTask as apiCreateTask,
+	updateTask as apiUpdateTask,
+	deleteTask as apiDeleteTask,
+} from "@shared/api/tasks.api";
+import { mapTaskResponseToTask, TaskPriority, TaskStatus } from "../types/task.types";
+import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../types/task.types";
 
 interface TasksState {
-  tasks: Task[];
-  addTask: (
-    title: string,
-    dueDate: Date | null,
-    startDate?: Date | null,
-    endDate?: Date | null,
-    isAllDay?: boolean
-  ) => void;
-  toggleTask: (id: string) => void;
-  updateTask: (
-    id: string,
-    patch: Partial<Pick<Task, "title" | "dueDate" | "isCompleted" | "startDate" | "endDate" | "isAllDay">>
-  ) => void;
-  deleteTask: (id: string) => void;
+	tasks: Task[];
+	isLoading: boolean;
+	error: string | null;
+
+	fetchTasks: () => Promise<void>;
+	addTask: (
+		title: string,
+		dueDate: Date | null,
+		startDate?: Date | null,
+		endDate?: Date | null,
+		isAllDay?: boolean,
+	) => Promise<void>;
+	toggleTask: (task: Task) => Promise<void>;
+	updateTask: (
+		id: number,
+		patch: Partial<
+			Pick<
+				Task,
+				"title" | "description" | "dueDate" | "isCompleted" | "startDate" | "endDate" | "isAllDay"
+			>
+		>,
+	) => Promise<void>;
+	deleteTask: (id: number) => Promise<void>;
 }
 
-export const useTasksStore = create<TasksState>((set) => ({
-  tasks: [
-    {
-      id: "1",
-      title: "Подготовить презентацию",
-      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      isCompleted: false,
-      isAllDay: false,
-      startDate: (() => { const d = new Date(); d.setHours(10, 0, 0, 0); d.setDate(d.getDate() + 2); return d; })(),
-      endDate: (() => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + 2); return d; })(),
-    },
-    {
-      id: "2",
-      title: "Сдать отчёт",
-      dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-      isCompleted: false,
-      isAllDay: false,
-      startDate: null,
-      endDate: null,
-    },
-    {
-      id: "3",
-      title: "Прочитать главу учебника",
-      dueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-      isCompleted: true,
-      isAllDay: false,
-      startDate: null,
-      endDate: null,
-    },
-  ],
+export const useTasksStore = create<TasksState>((set, get) => ({
+	tasks: [],
+	isLoading: false,
+	error: null,
 
-  addTask: (title, dueDate, startDate = null, endDate = null, isAllDay = false) =>
-    set((state) => ({
-      tasks: [
-        {
-          id: String(nextId++),
-          title: title.trim(),
-          dueDate,
-          isCompleted: false,
-          isAllDay: isAllDay ?? false,
-          startDate: startDate ?? null,
-          endDate: endDate ?? null,
-        },
-        ...state.tasks,
-      ],
-    })),
+	fetchTasks: async () => {
+		set({ isLoading: true, error: null });
+		try {
+			const data = await apiFetchTasks();
+			set({ tasks: data.map(mapTaskResponseToTask), isLoading: false });
+		} catch {
+			set({ isLoading: false, error: "Не удалось загрузить задачи" });
+		}
+	},
 
-  toggleTask: (id) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === id ? { ...t, isCompleted: !t.isCompleted } : t
-      ),
-    })),
+	addTask: async (title, dueDate, startDate = null, endDate = null, isAllDay = false) => {
+		const request: CreateTaskRequest = {
+			title: title.trim(),
+			deadline: dueDate ? dueDate.toISOString() : null,
+			startAt: startDate ? startDate.toISOString() : null,
+			endAt: endDate ? endDate.toISOString() : null,
+			priority: TaskPriority.Low,
+		};
+		const created = await apiCreateTask(request);
+		const task = mapTaskResponseToTask(created);
+		if (isAllDay && !task.isAllDay) {
+			task.isAllDay = true;
+		}
+		set((state) => ({ tasks: [task, ...state.tasks] }));
+	},
 
-  updateTask: (id, patch) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-    })),
+	toggleTask: async (task: Task) => {
+		set((state) => ({
+			tasks: state.tasks.map((t) => (t.id === task.id ? { ...t, isCompleted: !t.isCompleted } : t)),
+		}));
 
-  deleteTask: (id) =>
-    set((state) => ({
-      tasks: state.tasks.filter((t) => t.id !== id),
-    })),
+		const request: UpdateTaskRequest = {
+			title: task.title,
+			description: task.description,
+			startAt: task.startDate ? task.startDate.toISOString() : null,
+			endAt: task.endDate ? task.endDate.toISOString() : null,
+			deadline: task.dueDate ? task.dueDate.toISOString() : null,
+			priority: task.priority,
+			status: task.isCompleted ? TaskStatus.InProgress : TaskStatus.Completed,
+		};
+
+		try {
+			const updated = await apiUpdateTask(task.id, request);
+			const updatedTask = mapTaskResponseToTask(updated);
+			set((state) => ({
+				tasks: state.tasks.map((t) => (t.id === task.id ? updatedTask : t)),
+			}));
+		} catch {
+			set((state) => ({
+				tasks: state.tasks.map((t) =>
+					t.id === task.id ? { ...t, isCompleted: task.isCompleted } : t,
+				),
+			}));
+		}
+	},
+
+	updateTask: async (id, patch) => {
+		const current = get().tasks.find((t) => t.id === id);
+		if (!current) return;
+
+		const merged: Task = { ...current, ...patch };
+
+		const request: UpdateTaskRequest = {
+			title: merged.title,
+			description: merged.description,
+			startAt: merged.startDate ? merged.startDate.toISOString() : null,
+			endAt: merged.endDate ? merged.endDate.toISOString() : null,
+			deadline: merged.dueDate ? merged.dueDate.toISOString() : null,
+			priority: merged.priority,
+			status: merged.isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
+		};
+
+		const updated = await apiUpdateTask(id, request);
+		const updatedTask = mapTaskResponseToTask(updated);
+		if (patch.isAllDay !== undefined) {
+			updatedTask.isAllDay = patch.isAllDay;
+		}
+		set((state) => ({
+			tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
+		}));
+	},
+
+	deleteTask: async (id) => {
+		await apiDeleteTask(id);
+		set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+	},
 }));

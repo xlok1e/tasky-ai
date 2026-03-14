@@ -1,7 +1,7 @@
 import { checkTokenStatus, exchangeToken, getTelegramBotLink } from "@domains/auth/api/auth.api";
 import { useAuthStore } from "@domains/auth/store/auth.store";
 import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { AuthStatus } from "../types/login.types";
 

@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogFooter, DialogHeader } from "ui/dialog";
-import { Button } from "ui/button";
-import { Input } from "ui/input";
-import { Checkbox } from "ui/checkbox";
-import { Label } from "ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
+import { Button } from "@shared/ui/button";
+import { Input } from "@shared/ui/input";
+import { Checkbox } from "@shared/ui/checkbox";
+import { Label } from "@shared/ui/label";
 import { useTaskModal } from "../store/task-modal.store";
 import { useTasksStore } from "../store/tasks.store";
-import { Spinner } from "ui/spinner";
+import { Spinner } from "@shared/ui/spinner";
 
 function toInputDate(date: Date | null | undefined): string {
 	if (!date) return "";
@@ -92,6 +92,9 @@ export function TaskModal() {
 		<Dialog open={isOpen} onOpenChange={(open) => !open && !isBusy && close()}>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
+					<div className="hidden">
+						<DialogTitle></DialogTitle>
+					</div>
 					<div className="flex items-center gap-3">
 						<Checkbox
 							id="modal-completed"

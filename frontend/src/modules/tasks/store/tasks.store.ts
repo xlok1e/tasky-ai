@@ -4,7 +4,7 @@ import {
 	createTask as apiCreateTask,
 	updateTask as apiUpdateTask,
 	deleteTask as apiDeleteTask,
-} from "@shared/api/tasks.api";
+} from "../api/tasks.api";
 import { mapTaskResponseToTask, TaskPriority, TaskStatus } from "../types/task.types";
 import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../types/task.types";
 

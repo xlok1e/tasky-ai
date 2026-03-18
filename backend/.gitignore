@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 appsettings.Development.json
 
 bin\Debug
+**/bin/Debug/
+**/bin/Release/
+**/obj/

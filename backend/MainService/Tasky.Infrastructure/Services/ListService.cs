@@ -6,12 +6,14 @@ using Tasky.Infrastructure.Persistence;
 using Tasky.Domain.Entities;
 using Tasky.Domain.Enums;
 using Tasky.Application.Mappers;
-using System.ComponentModel;
+using System.Text.RegularExpressions;
 
 namespace Tasky.Infrastructure.Services
 {
     public class ListService : IListService
     {
+        private static readonly Regex HexColorRegex = new(@"^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
+
         private readonly AppDbContext _db;
 
         public ListService(AppDbContext db)
@@ -24,12 +26,15 @@ namespace Tasky.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(request.Name))
                 throw new ArgumentException("Название списка не может быть пустым.");
 
+            if (!string.IsNullOrEmpty(request.ColorHex) && !HexColorRegex.IsMatch(request.ColorHex))
+                throw new ArgumentException("ColorHex должен быть в формате #RRGGBB.");
+
             var list = new TaskList
             {
                 UserId = userId,
                 Name = request.Name.Trim(),
                 Color = request.ColorHex,
-                CreatedAt = DateTime.UtcNow  // ⬅️ Добавить, если есть поле
+                CreatedAt = DateTime.UtcNow
             };
 
             _db.Lists.Add(list);
@@ -40,7 +45,9 @@ namespace Tasky.Infrastructure.Services
 
         public async Task<ListResponse> UpdateAsync(int userId, int listId, ListUpdateRequest request)
         {
-            var list = await _db.Lists.FirstOrDefaultAsync(l => l.Id == listId && l.UserId == userId);
+            var list = await _db.Lists
+                .Include(l => l.Tasks)
+                .FirstOrDefaultAsync(l => l.Id == listId && l.UserId == userId);
             if (list is null)
                 throw new KeyNotFoundException("Список задач не найден.");
 
@@ -48,7 +55,11 @@ namespace Tasky.Infrastructure.Services
                 list.Name = request.Name.Trim();
 
             if (!string.IsNullOrWhiteSpace(request.ColorHex))
+            {
+                if (!HexColorRegex.IsMatch(request.ColorHex))
+                    throw new ArgumentException("ColorHex должен быть в формате #RRGGBB.");
                 list.Color = request.ColorHex;
+            }
 
             await _db.SaveChangesAsync();
             return list.ToResponse();
@@ -59,7 +70,7 @@ namespace Tasky.Infrastructure.Services
             var list = await _db.Lists
                 .Include(l => l.Tasks)
                 .FirstOrDefaultAsync(l => l.Id == listId && l.UserId == userId);
-                
+
             return list?.ToResponse();
         }
 
@@ -69,7 +80,7 @@ namespace Tasky.Infrastructure.Services
                 .Where(l => l.UserId == userId)
                 .Include(l => l.Tasks)
                 .ToListAsync();
-                
+
             return lists.Select(l => l.ToResponse());
         }
 
@@ -84,42 +95,42 @@ namespace Tasky.Infrastructure.Services
             return true;
         }
 
-        // ⬇️ НУЖНО ДОБАВИТЬ ЭТИ МЕТОДЫ ⬇️
-
         public async Task<ListTasksResponse> GetListTasksAsync(
-            int userId, 
-            int listId, 
-            int? priority, 
-            DateTime? due_date, 
-            string? status, 
-            int? offset, 
-            int? limit, 
+            int userId,
+            int listId,
+            string? priority,
+            DateTime? dueDate,
+            string? status,
+            int? offset,
+            int? limit,
             string? sort = "deadline")
         {
-            // Проверяем, что список принадлежит пользователю
             var listExists = await _db.Lists.AnyAsync(l => l.UserId == userId && l.Id == listId);
             if (!listExists)
-                return new ListTasksResponse(0, Enumerable.Empty<TaskResponse>());
+                throw new KeyNotFoundException($"Список с id {listId} не найден.");
 
             var query = _db.Tasks
                 .Include(t => t.List)
                 .Where(t => t.UserId == userId && t.ListId == listId)
                 .AsQueryable();
 
-            // Фильтры
-            if (priority.HasValue)
-                query = query.Where(t => (int)t.Priority == priority.Value);
+            if (!string.IsNullOrEmpty(priority))
+            {
+                if (!Enum.TryParse<TaskPriority>(priority, true, out var priorityEnum))
+                    throw new ArgumentException($"Недопустимое значение priority: '{priority}'.");
+                query = query.Where(t => t.Priority == priorityEnum);
+            }
 
-            if (due_date.HasValue)
-                query = query.Where(t => t.Deadline.HasValue && t.Deadline.Value.Date == due_date.Value.Date);
+            if (dueDate.HasValue)
+                query = query.Where(t => t.Deadline.HasValue && t.Deadline.Value.Date == dueDate.Value.Date);
 
             if (!string.IsNullOrEmpty(status))
             {
-                if (Enum.TryParse<TaskCompletionStatus>(status, true, out var statusEnum))
-                    query = query.Where(t => t.Status == statusEnum);
+                if (!Enum.TryParse<TaskCompletionStatus>(status, true, out var statusEnum))
+                    throw new ArgumentException($"Недопустимое значение status: '{status}'.");
+                query = query.Where(t => t.Status == statusEnum);
             }
 
-            // Сортировка
             query = sort?.ToLower() switch
             {
                 "priority" => query.OrderByDescending(t => t.Priority),
@@ -129,47 +140,50 @@ namespace Tasky.Infrastructure.Services
                 _ => query.OrderBy(t => t.Deadline)
             };
 
-            // Пагинация
+            var totalCount = await query.CountAsync();
+
             if (offset.HasValue)
                 query = query.Skip(offset.Value);
 
             if (limit.HasValue)
                 query = query.Take(limit.Value);
-            else
-                query = query.Take(20);
 
             var tasks = await query.ToListAsync();
             var taskResponses = tasks.Select(t => t.ToResponse()).ToList();
-            
-            return new ListTasksResponse(taskResponses.Count, taskResponses);
+
+            return new ListTasksResponse(totalCount, taskResponses);
         }
 
         public async Task<TaskResponse> CreateTaskInListAsync(int userId, int listId, TaskCreateRequest request)
         {
-    
-            var list = await _db.Lists.FirstOrDefaultAsync(l => l.UserId == userId && l.Id == listId);
-            if (list == null)
-                throw new KeyNotFoundException($"Список с id {listId} не найден");
+            if (string.IsNullOrWhiteSpace(request.Title))
+                throw new ArgumentException("Название задачи не может быть пустым.");
 
-            // Валидация дат
-            if (request.StartAt.HasValue || request.EndAt.HasValue)
+            var list = await _db.Lists.FirstOrDefaultAsync(l => l.UserId == userId && l.Id == listId);
+            if (list is null)
+                throw new KeyNotFoundException($"Список с id {listId} не найден.");
+
+            var hasTimeRange = request.StartAt.HasValue || request.EndAt.HasValue;
+            var hasDeadline = request.Deadline.HasValue;
+
+            if (hasTimeRange && hasDeadline)
+                throw new ArgumentException("Нельзя указывать одновременно диапазон времени (StartAt/EndAt) и Deadline.");
+
+            if (hasTimeRange)
             {
-                if (request.Deadline.HasValue)
-                    throw new InvalidOperationException("Нельзя указать и Deadline, и StartAt/EndAt");
-                
-                if (request.StartAt.HasValue && !request.EndAt.HasValue)
-                    throw new InvalidOperationException("EndAt обязателен, если указан StartAt");
-                
-                if (!request.StartAt.HasValue && request.EndAt.HasValue)
-                    throw new InvalidOperationException("StartAt обязателен, если указан EndAt");
+                if (!request.StartAt.HasValue || !request.EndAt.HasValue)
+                    throw new ArgumentException("Если указывается диапазон времени, то StartAt и EndAt оба обязательны.");
+
+                if (request.StartAt >= request.EndAt)
+                    throw new ArgumentException("StartAt должен быть раньше EndAt.");
             }
 
-            var task = new TaskItem 
+            var task = new TaskItem
             {
                 UserId = userId,
                 ListId = listId,
-                Title = request.Title,
-                Description = request.Description,
+                Title = request.Title.Trim(),
+                Description = request.Description?.Trim(),
                 StartAt = request.StartAt,
                 EndAt = request.EndAt,
                 Deadline = request.Deadline,
@@ -181,11 +195,8 @@ namespace Tasky.Infrastructure.Services
             _db.Tasks.Add(task);
             await _db.SaveChangesAsync();
 
-            var createdTask = await _db.Tasks
-                .Include(t => t.List)
-                .FirstOrDefaultAsync(t => t.Id == task.Id);
-
-            return createdTask?.ToResponse() ?? throw new InvalidOperationException("Не удалось создать задачу");
+            task.List = list;
+            return task.ToResponse();
         }
     }
 }

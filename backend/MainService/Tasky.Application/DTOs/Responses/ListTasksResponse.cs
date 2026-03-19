@@ -1,5 +1,6 @@
 namespace Tasky.Application.DTOs.Responses;
+
 public record ListTasksResponse(
-    int Count,                    // Обязательный атрибут count
+    int TotalCount,
     IEnumerable<TaskResponse> Tasks
 );

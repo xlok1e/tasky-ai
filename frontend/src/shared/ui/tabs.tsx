@@ -82,13 +82,13 @@ const TabsList = forwardRef<
 				ref={ref}
 				data-slot="tabs-list"
 				className={cn(
-					"bg-background border border-border text-muted-foreground inline-flex h-10 w-fit items-center justify-center rounded-lg p-[5px] relative",
+					"bg-background border border-border text-muted-foreground inline-flex h-[40px] w-fit items-center justify-center rounded-[8px] p-[3px] relative",
 					className,
 				)}
 				{...props}
 			/>
 			<div
-				className="bg-primary/90 dark:bg-input/30 dark:border-input absolute rounded-md transition-all duration-200 ease-out pointer-events-none"
+				className="bg-secondary dark:bg-input/30 dark:border-input absolute rounded-[6px] transition-all duration-200 ease-out pointer-events-none"
 				style={indicatorStyle}
 			/>
 		</div>
@@ -104,7 +104,7 @@ const TabsTrigger = forwardRef<
 		ref={ref}
 		data-slot="tabs-trigger"
 		className={cn(
-			"data-[state=active]:text-foreground dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-3 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative z-10",
+			"data-[state=active]:text-foreground dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-3 text-[18px] font-regular whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative z-10",
 			className,
 		)}
 		{...props}

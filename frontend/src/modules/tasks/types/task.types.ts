@@ -54,7 +54,6 @@ export interface Task {
   listId: number | null;
   title: string;
   description: string | null;
-  dueDate: Date | null;
   isCompleted: boolean;
   isAllDay: boolean;
   startDate: Date | null;
@@ -83,7 +82,6 @@ export function mapTaskResponseToTask(r: TaskResponse): Task {
     listId: r.listId,
     title: r.title,
     description: r.description,
-    dueDate: r.deadline ? new Date(r.deadline) : null,
     isCompleted: r.status === TaskStatus.Completed,
     isAllDay: deriveIsAllDay(r.startAt, r.endAt),
     startDate: r.startAt ? new Date(r.startAt) : null,

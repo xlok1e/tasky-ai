@@ -48,7 +48,7 @@ export function Sidebar() {
 					<div
 						className={cn(
 							"transition-all duration-0",
-							isCollapsed ? "max-w-0 opacity-0" : "max-w-xs opacity-100",
+							isCollapsed ? "max-w-0 opacity-0 pointer-events-none" : "max-w-xs opacity-100",
 						)}
 					>
 						<Link
@@ -72,7 +72,7 @@ export function Sidebar() {
 					</Button>
 				</div>
 
-				<nav className={cn("flex flex-col gap-2.5", isCollapsed && "items-center")}>
+				<nav className={cn("flex flex-col gap-1.5", isCollapsed && "items-center")}>
 					{SIDEBAR_ITEMS.map((item) => (
 						<SidebarItem
 							key={item.id}
@@ -101,7 +101,7 @@ export function Sidebar() {
 						</Button>
 					</div>
 
-					<div className="flex flex-col gap-2.5">
+					<div className="flex flex-col gap-1.5">
 						{lists.map((list) => (
 							<SidebarListItem
 								key={list.id}
@@ -114,7 +114,7 @@ export function Sidebar() {
 				</div>
 			</div>
 
-			<div className={cn("flex flex-col gap-2.5", isCollapsed && "items-center")}>
+			<div className={cn("flex flex-col gap-2", isCollapsed && "items-center")}>
 				{BOTTOM_ITEMS.map(({ icon: Icon, label, href }) => (
 					<Link
 						key={label}

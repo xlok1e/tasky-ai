@@ -14,9 +14,10 @@ public class TaskItem
     public DateTime? StartAt { get; set; }
     public DateTime? EndAt { get; set; }
     public DateTime? Deadline { get; set; }
+    public bool IsAllDay { get; set; } = false;
 
     public TaskPriority Priority { get; set; } = TaskPriority.Low;
-	public TaskCompletionStatus Status { get; set; } = TaskCompletionStatus.InProgress;
+    public TaskCompletionStatus Status { get; set; } = TaskCompletionStatus.InProgress;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
 

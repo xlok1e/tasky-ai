@@ -1,4 +1,5 @@
 import { Sidebar } from "@components/sidebar/Sidebar";
+import { RightSidebar } from "@components/right-sidebar/RightSidebar";
 import { TaskModal } from "@modules/tasks/components/TaskModal";
 import { AuthInitializer } from "@domains/auth/components/AuthInitializer";
 import { TasksInitializer } from "@modules/tasks/components/TasksInitializer";
@@ -12,6 +13,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 			<ListsInitializer />
 			<Sidebar />
 			<main className="flex-1 overflow-y-auto p-6">{children}</main>
+			<RightSidebar />
 			<TaskModal />
 		</div>
 	);

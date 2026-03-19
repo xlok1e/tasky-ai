@@ -14,6 +14,8 @@ interface TasksState {
 	error: string | null;
 
 	fetchTasks: () => Promise<void>;
+	_addOptimisticTask: (task: Task) => void;
+	_removeOptimisticTask: (id: number) => void;
 	addTask: (
 		title: string,
 		dueDate: Date | null,
@@ -50,6 +52,15 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		}
 	},
 
+	_addOptimisticTask: (task: Task) => {
+		set((state) => ({ tasks: [task, ...state.tasks] }));
+	},
+
+	_removeOptimisticTask: (id: number) => {
+		set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+	},
+
+	addTask: async (title, dueDate, startDate = null, endDate = null, isAllDay = false) => {
 	addTask: async (title, dueDate, startDate = null, endDate = null, isAllDay = false, listId = null) => {
 		const request: CreateTaskRequest = {
 			title: title.trim(),

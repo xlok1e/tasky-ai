@@ -23,17 +23,18 @@ namespace Tasky.Application.Mappers
                 item.CompletedAt,
                 item.GoogleEventId
             );
-
-        public static ListResponse ToResponse(this TaskList list)
-        {
-            var uncompletedCount = list.Tasks.Count(t => t.Status != TaskCompletionStatus.Completed);
-            return new(
-                list.Id,
-                list.Name,
-                list.Color,
-                uncompletedCount,
-                list.CreatedAt
+        public static TaskSummaryResponse ToSummaryResponse(this TaskItem item)
+            => new(
+                item.Id,
+                item.List?.Name,
+                item.Title,
+                item.Description,
+                item.StartAt,
+                item.EndAt,
+                item.Priority,
+                item.Status,
+                item.CreatedAt,
+                item.GoogleEventId
             );
-        }
     }
 }

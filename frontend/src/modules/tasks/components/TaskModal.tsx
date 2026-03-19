@@ -67,7 +67,7 @@ export function TaskModal() {
 					endDate,
 				});
 			} else {
-				await addTask(trimmed, dueDate, startDate, endDate);
+				await addTask(trimmed, dueDate, startDate, endDate, false, prefill?.listId);
 			}
 			close();
 		} finally {

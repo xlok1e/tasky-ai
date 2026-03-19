@@ -51,6 +51,7 @@ export interface UpdateTaskRequest {
 /** Client-side task representation */
 export interface Task {
   id: number;
+  listId: number | null;
   title: string;
   description: string | null;
   dueDate: Date | null;
@@ -79,6 +80,7 @@ function deriveIsAllDay(startAt: string | null, endAt: string | null): boolean {
 export function mapTaskResponseToTask(r: TaskResponse): Task {
   return {
     id: r.id,
+    listId: r.listId,
     title: r.title,
     description: r.description,
     dueDate: r.deadline ? new Date(r.deadline) : null,

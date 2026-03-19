@@ -20,6 +20,7 @@ interface TasksState {
 		startDate?: Date | null,
 		endDate?: Date | null,
 		isAllDay?: boolean,
+		listId?: number | null,
 	) => Promise<void>;
 	toggleTask: (task: Task) => Promise<void>;
 	updateTask: (
@@ -49,13 +50,14 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		}
 	},
 
-	addTask: async (title, dueDate, startDate = null, endDate = null, isAllDay = false) => {
+	addTask: async (title, dueDate, startDate = null, endDate = null, isAllDay = false, listId = null) => {
 		const request: CreateTaskRequest = {
 			title: title.trim(),
 			deadline: dueDate ? dueDate.toISOString() : null,
 			startAt: startDate ? startDate.toISOString() : null,
 			endAt: endDate ? endDate.toISOString() : null,
 			priority: TaskPriority.Low,
+			listId: listId ?? null,
 		};
 		const created = await apiCreateTask(request);
 		const task = mapTaskResponseToTask(created);
@@ -78,6 +80,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			deadline: task.dueDate ? task.dueDate.toISOString() : null,
 			priority: task.priority,
 			status: task.isCompleted ? TaskStatus.InProgress : TaskStatus.Completed,
+			listId: task.listId,
 		};
 
 		try {
@@ -109,6 +112,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			deadline: merged.dueDate ? merged.dueDate.toISOString() : null,
 			priority: merged.priority,
 			status: merged.isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
+			listId: merged.listId,
 		};
 
 		const updated = await apiUpdateTask(id, request);

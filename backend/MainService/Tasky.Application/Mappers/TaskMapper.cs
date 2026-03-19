@@ -23,9 +23,11 @@ namespace Tasky.Application.Mappers
                 item.CompletedAt,
                 item.GoogleEventId
             );
+
         public static TaskSummaryResponse ToSummaryResponse(this TaskItem item)
             => new(
                 item.Id,
+                item.ListId,
                 item.List?.Name,
                 item.Title,
                 item.Description,
@@ -36,5 +38,17 @@ namespace Tasky.Application.Mappers
                 item.CreatedAt,
                 item.GoogleEventId
             );
+
+        public static ListResponse ToResponse(this TaskList list)
+        {
+            var uncompletedCount = list.Tasks.Count(t => t.Status != TaskCompletionStatus.Completed);
+            return new(
+                list.Id,
+                list.Name,
+                list.Color,
+                uncompletedCount,
+                list.CreatedAt
+            );
+        }
     }
 }

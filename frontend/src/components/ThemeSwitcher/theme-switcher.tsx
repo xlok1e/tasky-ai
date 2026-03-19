@@ -1,6 +1,8 @@
+"use client";
+
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger } from "ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 
 export const ThemeSwitcher = () => {
 	const { theme, setTheme } = useTheme();

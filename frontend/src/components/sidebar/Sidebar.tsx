@@ -5,9 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SIDEBAR_ITEMS } from "@shared/config/sidebar.config";
 import { SidebarItem } from "./SidebarItem";
+import { SidebarListItem } from "./SidebarListItem";
+import { useListsStore } from "@modules/lists/store/lists.store";
 import {
 	CirclePlus,
-	EllipsisVertical,
 	LayoutList,
 	PanelLeftClose,
 	PanelLeftOpen,
@@ -30,6 +31,7 @@ const BOTTOM_ITEMS = [
 export function Sidebar() {
 	const pathname = usePathname();
 	const [isCollapsed, setIsCollapsed] = useState(false);
+	const lists = useListsStore((s) => s.lists);
 
 	return (
 		<aside
@@ -99,18 +101,16 @@ export function Sidebar() {
 						</Button>
 					</div>
 
-					<Link
-						href="/"
-						className="flex items-center gap-2 rounded-[6px] px-2.5 py-1 pr-1 transition-colors justify-between hover:bg-accent/50"
-					>
-						<div className="flex items-center gap-2">
-							<div className="w-[22px] h-[22px] rounded-[4px] bg-gray-200 shrink-0" />
-							<label className="text-[18px] cursor-pointer whitespace-nowrap">Список 1</label>
-						</div>
-						<Button className="w-[24px]! h-[24px]! rounded-[6px]" variant="ghost">
-							<EllipsisVertical className="size-[14px]" strokeWidth={2} />
-						</Button>
-					</Link>
+					<div className="flex flex-col gap-2.5">
+						{lists.map((list) => (
+							<SidebarListItem
+								key={list.id}
+								list={list}
+								isActive={pathname === `/lists/${list.id}`}
+								isCollapsed={isCollapsed}
+							/>
+						))}
+					</div>
 				</div>
 			</div>
 

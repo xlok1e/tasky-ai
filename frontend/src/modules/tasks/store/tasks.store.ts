@@ -7,6 +7,7 @@ import {
 } from "../api/tasks.api";
 import { mapTaskResponseToTask, TaskPriority, TaskStatus } from "../types/task.types";
 import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../types/task.types";
+import { toastMessage } from "@/shared/toast/toast";
 
 interface TasksState {
 	tasks: Task[];
@@ -128,6 +129,10 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
 		const merged: Task = { ...current, ...patch };
 
+		set((state) => ({
+			tasks: state.tasks.map((t) => (t.id === id ? merged : t)),
+		}));
+
 		const request: UpdateTaskRequest = {
 			title: merged.title,
 			description: merged.description,
@@ -139,14 +144,21 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			listId: merged.listId,
 		};
 
-		const updated = await apiUpdateTask(id, request);
-		const updatedTask = mapTaskResponseToTask(updated);
-		if (patch.isAllDay !== undefined) {
-			updatedTask.isAllDay = patch.isAllDay;
+		try {
+			const updated = await apiUpdateTask(id, request);
+			const updatedTask = mapTaskResponseToTask(updated);
+			if (patch.isAllDay !== undefined) {
+				updatedTask.isAllDay = patch.isAllDay;
+			}
+			set((state) => ({
+				tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
+			}));
+		} catch {
+			set((state) => ({
+				tasks: state.tasks.map((t) => (t.id === id ? current : t)),
+			}));
+			toastMessage.showError("Не удалось обновить задачу");
 		}
-		set((state) => ({
-			tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
-		}));
 	},
 
 	deleteTask: async (id) => {

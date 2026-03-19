@@ -34,11 +34,6 @@ export function TaskRow({ task }: TaskRowProps) {
 			>
 				{task.title}
 			</span>
-			{task.dueDate && (
-				<span className="shrink-0 text-xs text-muted-foreground">
-					{format(task.dueDate, "d MMM", { locale: ru })}
-				</span>
-			)}
 		</div>
 	);
 }

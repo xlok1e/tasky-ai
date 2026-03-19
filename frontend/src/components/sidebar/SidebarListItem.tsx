@@ -36,7 +36,7 @@ export function SidebarListItem({ list, isActive, isCollapsed }: SidebarListItem
 			href={`/lists/${list.id}`}
 			className={cn(
 				"flex items-center gap-2 rounded-[6px] px-2.5 py-1 pr-1 transition-colors justify-between  h-[36px]!",
-				isActive ? "bg-accent text-foreground" : "hover:bg-accent/50",
+				isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/30",
 			)}
 		>
 			<div className="flex items-center gap-2 min-w-0">

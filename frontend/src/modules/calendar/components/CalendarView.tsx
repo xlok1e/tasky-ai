@@ -54,8 +54,14 @@ export function CalendarView() {
 							<TabsTrigger value={Views.MONTH}>Месяц</TabsTrigger>
 						</TabsList>
 					</Tabs>
-					<Button variant="outline" className="gap-2">
-						<Sparkles size={16} />
+					<Button
+						variant="default"
+						className="gap-2 text-accent-foreground"
+						style={{
+							background: "linear-gradient(135deg, #D8EEC7 0%, #F4E6D4 100%)",
+						}}
+					>
+						<Sparkles className="size-[24px]" strokeWidth={1} />
 						ИИ-ассистент
 					</Button>
 				</div>

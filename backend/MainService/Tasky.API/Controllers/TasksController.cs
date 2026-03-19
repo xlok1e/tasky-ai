@@ -27,12 +27,12 @@ namespace Tasky.API.Controllers
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
 
-        [HttpPut("{id}")]
+        [HttpPatch("{id}")]
         public async Task<ActionResult<TaskResponse>> Update(int id, [FromBody] TaskUpdateRequest request)
         {
             var result = await _taskService.UpdateAsync(UserId, id, request);
             return Ok(result);
-        }
+        } 
 
         [HttpGet("{id}")]
         public async Task<ActionResult<TaskResponse>> GetById(int id)
@@ -42,9 +42,15 @@ namespace Tasky.API.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TaskResponse>>> GetAll()
+        public async Task<ActionResult<IEnumerable<TaskResponse>>> GetAll(
+            [FromQuery] int? list_id,
+            [FromQuery] string? priority,
+            [FromQuery] DateTime? due_date,
+            [FromQuery] string? status,
+            [FromQuery] int? offset,
+            [FromQuery] int? limit)
         {
-            var list = await _taskService.GetAllAsync(UserId);
+            var list = await _taskService.GetAllAsync(UserId, list_id, priority, due_date, status, offset, limit);
             return Ok(list);
         }
 

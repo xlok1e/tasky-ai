@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Tasky.Application.DTOs.Requests;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
+using Tasky.Domain.Enums;
 
 namespace Tasky.API.Controllers
 {
@@ -27,7 +28,7 @@ namespace Tasky.API.Controllers
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
 
-        [HttpPut("{id}")]
+        [HttpPatch("{id}")]
         public async Task<ActionResult<TaskResponse>> Update(int id, [FromBody] TaskUpdateRequest request)
         {
             var result = await _taskService.UpdateAsync(UserId, id, request);
@@ -42,9 +43,38 @@ namespace Tasky.API.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TaskResponse>>> GetAll()
+        public async Task<ActionResult<IEnumerable<TaskSummaryResponse>>> GetAll(
+            [FromQuery] int? listId,
+            [FromQuery] string? priority,
+            [FromQuery] DateTime? dueDate,
+            [FromQuery] string? status,
+            [FromQuery] int? offset,
+            [FromQuery] int? limit,
+            [FromQuery] string? sort = "deadline")
         {
-            var list = await _taskService.GetAllAsync(UserId);
+            TaskPriority? parsedPriority = null;
+            if (priority is not null)
+            {
+                if (!Enum.TryParse<TaskPriority>(priority, ignoreCase: true, out var p))
+                    return BadRequest(new { error = $"Недопустимое значение priority '{priority}'. Допустимые: {string.Join(", ", Enum.GetNames<TaskPriority>())}" });
+                parsedPriority = p;
+            }
+
+            TaskCompletionStatus? parsedStatus = null;
+            if (status is not null)
+            {
+                if (!Enum.TryParse<TaskCompletionStatus>(status, ignoreCase: true, out var s))
+                    return BadRequest(new { error = $"Недопустимое значение status '{status}'. Допустимые: {string.Join(", ", Enum.GetNames<TaskCompletionStatus>())}" });
+                parsedStatus = s;
+            }
+
+            if (offset.HasValue && offset.Value < 0)
+                return BadRequest(new { error = "offset должен быть >= 0." });
+
+            if (limit.HasValue && (limit.Value <= 0 || limit.Value > 500))
+                return BadRequest(new { error = "limit должен быть в диапазоне от 1 до 500." });
+
+            var list = await _taskService.GetAllAsync(UserId, listId, parsedPriority, dueDate, parsedStatus, offset, limit, sort);
             return Ok(list);
         }
 

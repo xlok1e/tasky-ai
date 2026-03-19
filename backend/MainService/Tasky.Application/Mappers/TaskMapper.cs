@@ -1,5 +1,6 @@
 using Tasky.Application.DTOs.Responses;
 using Tasky.Domain.Entities;
+using Tasky.Domain.Enums;
 
 namespace Tasky.Application.Mappers
 {
@@ -22,7 +23,6 @@ namespace Tasky.Application.Mappers
                 item.CompletedAt,
                 item.GoogleEventId
             );
-
         public static TaskSummaryResponse ToSummaryResponse(this TaskItem item)
             => new(
                 item.Id,

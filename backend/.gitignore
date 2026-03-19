@@ -485,3 +485,9 @@ $RECYCLE.BIN/
 appsettings.Development.json
 
 bin\Debug
+
+# Postman
+.postman/
+postman/
+*.postman_collection.json
+*.postman_environment.json

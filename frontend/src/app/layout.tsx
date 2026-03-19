@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "sonner";
+import { Providers } from "./providers";
 
 const lineSeedJP = localFont({
 	src: [
@@ -23,13 +24,15 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<body
 				className={`${lineSeedJP.variable} antialiased bg-background`}
 				suppressHydrationWarning={true}
 			>
-				{children}
-				<Toaster />
+				<Providers>
+					{children}
+					<Toaster />
+				</Providers>
 			</body>
 		</html>
 	);

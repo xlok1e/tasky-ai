@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { getCookie, setCookie, deleteCookie } from "cookies-next";
-import type { AuthUser } from "@shared/types/auth.types";
+import type { AuthUser } from "@domains/auth/types/auth.types";
 
 const TOKEN_COOKIE = "access_token";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days

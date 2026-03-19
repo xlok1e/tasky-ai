@@ -106,11 +106,6 @@ button.rbc-input::-moz-focus-inner {
 }
 .rbc-today {
 	background-color: var(--background);
-	background-image: repeating-linear-gradient(
-		-45deg,
-		var(--background) 0 10px,
-		var(--muted) 10px 12px
-	);
 }
 .rbc-toolbar {
 	display: -webkit-flex;
@@ -179,9 +174,8 @@ button.rbc-input::-moz-focus-inner {
 	--event-border: color-mix(in oklab, var(--primary) 90%, transparent);
 	background-color: var(--event-bg);
 	color: var(--event-color);
-	padding: 3px;
-	border-radius: var(--radius);
-	border: 1px solid var(--event-border);
+	padding: 8px;
+	border-radius: 8px;
 	cursor: pointer;
 }
 .rbc-slot-selecting .rbc-event {
@@ -475,7 +469,7 @@ button.rbc-input::-moz-focus-inner {
 	bottom: 0;
 	left: 0;
 	position: absolute;
-	right: 10px;
+	right: 0;
 	top: 0;
 }
 .rbc-day-slot .rbc-events-container.rbc-is-rtl {
@@ -483,7 +477,6 @@ button.rbc-input::-moz-focus-inner {
 	right: 0;
 }
 .rbc-day-slot .rbc-event {
-	border: 1px solid var(--event-border);
 	display: -webkit-flex;
 	display: -ms-flexbox;
 	display: flex;
@@ -532,6 +525,8 @@ button.rbc-input::-moz-focus-inner {
 .rbc-slot-selection {
 	z-index: 10;
 	position: absolute;
+	left: 0;
+	right: 0;
 	background-color: var(--primary);
 }
 .rbc-slot-selecting {
@@ -687,10 +682,7 @@ button.rbc-input::-moz-focus-inner {
 .rbc-month-view {
 	border: none;
 }
-.rbc-event:hover {
-	background-color: var(--event-bg);
-	box-shadow: 0 0 0 1px var(--ring);
-}
+
 .rbc-event.event-variant-primary {
 	--event-bg: var(--primary);
 	--event-color: var(--primary-foreground);
@@ -711,15 +703,38 @@ button.rbc-input::-moz-focus-inner {
 	--event-color: var(--accent-foreground);
 	--event-border: var(--accent);
 }
-.event-component {
-	background-color: var(--primary);
-	color: var(--primary-foreground);
-	padding: 5px;
-	border-radius: var(--radius);
-	font-size: 14px;
+.calendar-event-inner {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	width: 100%;
+	height: 100%;
 	overflow: hidden;
+	font-family: var(--font-sans);
+}
+.calendar-event-title {
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	font-size: 14px;
+	font-family: var(--font-sans);
+	line-height: 1.3;
+	margin: 0;
+	word-break: break-word;
+}
+.event-completed .calendar-event-title {
+	text-decoration: line-through;
+}
+.calendar-event-time {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	font-size: 12px;
+	font-family: var(--font-sans);
 	white-space: nowrap;
-	text-overflow: ellipsis;
+	opacity: 0.9;
+	flex-shrink: 0;
 }
 .rbc-current-time-indicator {
 	background-color: var(--destructive) !important;

@@ -44,7 +44,7 @@ export function SidebarListItem({ list, isActive, isCollapsed }: SidebarListItem
 					className="w-[22px] h-[22px] rounded-[4px] shrink-0"
 					style={{ backgroundColor: list.colorHex }}
 				/>
-				<span className="text-[18px] pt-[3px] box-border whitespace-nowrap overflow-hidden text-ellipsis">
+				<span className="text-[18px] box-border whitespace-nowrap overflow-hidden text-ellipsis">
 					{list.name}
 				</span>
 			</div>

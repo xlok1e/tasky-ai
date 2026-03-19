@@ -19,7 +19,7 @@ export function SidebarItem({ item, isActive, isCollapsed }: SidebarItemProps) {
 			className={cn(
 				"flex items-center rounded-[6px] transition-colors overflow-hidden",
 				isCollapsed ? "w-[40px] h-[40px] justify-center" : "gap-2 w-full px-2.5 py-1 text-[18px]",
-				isActive ? "bg-accent text-foreground" : "hover:bg-accent/50",
+				isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
 			)}
 		>
 			<Icon size={18} strokeWidth={1.5} className="shrink-0" />

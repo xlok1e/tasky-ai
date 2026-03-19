@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, ComponentType } from "react";
+import { useCallback, useMemo, ComponentType } from "react";
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import "./big-calendar.css";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { ru } from "date-fns/locale";
+import { Clock } from "lucide-react";
 import type { CalendarProps } from "react-big-calendar";
 import type { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import type { Task } from "@modules/tasks/types/task.types";
+import { getContrastColor, hexToRgba } from "@modules/calendar/utils/calendar.utils";
 
 import type { View } from "react-big-calendar";
 
@@ -29,6 +31,7 @@ export interface CalendarTaskEvent {
 	start: Date;
 	end: Date;
 	allDay?: boolean;
+	colorHex?: string;
 }
 
 const DnDCalendar = withDragAndDrop<CalendarTaskEvent>(
@@ -46,6 +49,29 @@ const MESSAGES = {
 	noEventsInRange: "Нет задач",
 	showMore: (count: number) => `+${count} ещё`,
 };
+
+interface CalendarEventProps {
+	event: CalendarTaskEvent;
+}
+
+function CalendarEventContent({ event }: CalendarEventProps) {
+	const task = event.resource;
+	const timeStr = !event.allDay
+		? `${format(event.start, "HH:mm")} — ${format(event.end, "HH:mm")}`
+		: null;
+
+	return (
+		<div className="calendar-event-inner">
+			<p className="calendar-event-title">{task.title}</p>
+			{timeStr && (
+				<div className="calendar-event-time">
+					<Clock size={10} strokeWidth={2} />
+					<span>{timeStr}</span>
+				</div>
+			)}
+		</div>
+	);
+}
 
 interface BigCalendarProps {
 	events: CalendarTaskEvent[];
@@ -68,23 +94,32 @@ export function BigCalendar({
 	onEventDrop,
 	onEventResize,
 }: BigCalendarProps) {
-	const eventPropGetter = useMemo<CalendarProps<CalendarTaskEvent>["eventPropGetter"]>(
-		() => (event) => ({
-			className: event.resource.isCompleted ? "event-variant-outline" : "event-variant-primary",
-		}),
-		[],
-	);
+	const eventPropGetter = useCallback<
+		NonNullable<CalendarProps<CalendarTaskEvent>["eventPropGetter"]>
+	>((event) => {
+		const style: React.CSSProperties & Record<string, string> = {};
+		const colorHex = event.colorHex;
+
+		if (colorHex) {
+			style.backgroundColor = hexToRgba(colorHex, 0.5);
+			style.color = getContrastColor(colorHex);
+		}
+
+		const className = event.resource.isCompleted ? "event-completed" : "event-variant-primary";
+		return { style, className };
+	}, []);
 
 	const components = useMemo<CalendarProps<CalendarTaskEvent>["components"]>(
 		() => ({
 			week: {
-				header: ({ date }: { date: Date }) => (
+				header: ({ date: headerDate }: { date: Date }) => (
 					<div className="flex flex-col items-center py-1">
-						<span>{format(date, "EEEEEE", { locale: ru })}</span>
-						<span>{format(date, "d")}</span>
+						<span>{format(headerDate, "EEEEEE", { locale: ru })}</span>
+						<span>{format(headerDate, "d")}</span>
 					</div>
 				),
 			},
+			event: CalendarEventContent,
 		}),
 		[],
 	);
@@ -112,8 +147,8 @@ export function BigCalendar({
 			onEventDrop={onEventDrop}
 			onEventResize={onEventResize}
 			toolbar={false}
-			step={60}
-			timeslots={1}
+			step={15}
+			timeslots={4}
 			components={components}
 		/>
 	);

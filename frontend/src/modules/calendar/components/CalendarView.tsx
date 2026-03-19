@@ -31,18 +31,17 @@ export function CalendarView() {
 			<div className="flex items-start justify-between">
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center gap-1">
-						<Button variant="ghost" size="icon" onClick={handlePrevious}>
-							<ArrowLeft size={18} />
+						<Button variant="ghost" className="w-[40px]! h-[40px]!" onClick={handlePrevious}>
+							<ArrowLeft className="size-[24px]" strokeWidth={2} />
 						</Button>
-						<h1 className="text-2xl font-semibold capitalize min-w-[200px] text-center">
+						<h1 className="text-2xl font-semibold capitalize min-w-[165px] text-center">
 							{monthLabel}
 						</h1>
-						<Button variant="ghost" size="icon" onClick={handleNext}>
-							<ArrowRight size={18} />
+						<Button variant="ghost" className="w-[40px]! h-[40px]!" onClick={handleNext}>
+							<ArrowRight className="size-[24px]" strokeWidth={2} />
 						</Button>
 					</div>
-					<Button variant="outline" className="gap-2" onClick={handleAddTask}>
-						<Plus size={16} />
+					<Button variant="secondary" className="w-fit" onClick={handleAddTask}>
 						Добавить задачу
 					</Button>
 				</div>

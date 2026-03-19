@@ -2,11 +2,33 @@
 
 import { useTasksStore } from "../store/tasks.store";
 import { TaskRow } from "./TaskRow";
+import type { Task } from "../types/task.types";
 
-export function TaskList() {
-	const tasks = useTasksStore((s) => s.tasks);
-	const isLoading = useTasksStore((s) => s.isLoading);
-	const error = useTasksStore((s) => s.error);
+interface TaskListProps {
+	listId?: number;
+	tasks?: Task[];
+	isLoading?: boolean;
+	error?: string | null;
+}
+
+export function TaskList({
+	listId,
+	tasks: tasksProp,
+	isLoading: isLoadingProp,
+	error: errorProp,
+}: TaskListProps = {}) {
+	const storeTasks = useTasksStore((s) => s.tasks);
+	const storeIsLoading = useTasksStore((s) => s.isLoading);
+	const storeError = useTasksStore((s) => s.error);
+
+	const isLoading = isLoadingProp ?? storeIsLoading;
+	const error = errorProp ?? storeError;
+
+	const tasks =
+		tasksProp ??
+		(listId !== undefined
+			? storeTasks.filter((t) => t.listId === listId)
+			: storeTasks.filter((t) => t.listId === null));
 
 	const pendingTasks = tasks.filter((t) => !t.isCompleted);
 	const completedTasks = tasks.filter((t) => t.isCompleted);

@@ -36,11 +36,7 @@
 	--sidebar-accent-foreground: oklch(0.2257 0.0211 18.8449);
 	--sidebar-border: oklch(0.8726 0.0407 75.7582);
 	--sidebar-ring: oklch(0.8726 0.0407 75.7582);
-	--font-sans: ABeeZee, ui-sans-serif, sans-serif, system-ui;
-	--font-serif: Amiri, ui-serif, serif;
-	--font-mono:
-		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-		monospace;
+	--font-sans: var(--font-line-seed-jp), ui-sans-serif, sans-serif;
 	--radius: 0.625rem;
 	--shadow-x: 0;
 	--shadow-y: 1px;
@@ -93,11 +89,7 @@
 	--sidebar-accent-foreground: oklch(0.985 0 0);
 	--sidebar-border: oklch(0.275 0 0);
 	--sidebar-ring: oklch(0.439 0 0);
-	--font-sans: ABeeZee, ui-sans-serif, sans-serif, system-ui;
-	--font-serif: Amiri, ui-serif, serif;
-	--font-mono:
-		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-		monospace;
+	--font-sans: var(--font-line-seed-jp), ui-sans-serif, sans-serif;
 	--radius: 0.625rem;
 	--shadow-x: 0;
 	--shadow-y: 1px;
@@ -150,8 +142,6 @@
 	--color-sidebar-ring: var(--sidebar-ring);
 
 	--font-sans: var(--font-sans);
-	--font-mono: var(--font-mono);
-	--font-serif: var(--font-serif);
 
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);

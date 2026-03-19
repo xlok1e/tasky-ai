@@ -1,4 +1,4 @@
-import { CalendarDays, Inbox, Settings } from "lucide-react";
+import { CalendarDays, ChartNoAxesCombined, Inbox, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface SidebarItem {
@@ -10,21 +10,21 @@ export interface SidebarItem {
 
 export const SIDEBAR_ITEMS: SidebarItem[] = [
 	{
-		id: "inbox",
-		label: "Входящие",
-		icon: Inbox,
-		href: "/inbox",
-	},
-	{
 		id: "calendar",
 		label: "Календарь",
 		icon: CalendarDays,
 		href: "/calendar",
 	},
 	{
-		id: "settings",
-		label: "Настройки",
-		icon: Settings,
-		href: "/settings",
+		id: "inbox",
+		label: "Входящие задаи",
+		icon: Inbox,
+		href: "/inbox",
+	},
+	{
+		id: "statistics",
+		label: "Статистика",
+		icon: ChartNoAxesCombined,
+		href: "/statistics",
 	},
 ];

@@ -1,19 +1,41 @@
 import { useTaskModal } from "@modules/tasks/store/task-modal.store";
 import { useTasksStore } from "@modules/tasks/store/tasks.store";
 import { ru } from "date-fns/locale";
-import { format } from "date-fns";
+import { addDays, addMonths, addWeeks, format, subDays, subMonths, subWeeks } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
+import { Views } from "react-big-calendar";
+import type { View } from "react-big-calendar";
 import { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import { CalendarTaskEvent } from "../components/BigCalendar";
 import { deriveAllDay, clampToSingleDay } from "../utils/calendar.utils";
 
-export function useCalendarView() {
+export function useCalendarView(view: View) {
 	const [date, setDate] = useState(new Date());
 	const tasks = useTasksStore((s) => s.tasks);
 	const updateTask = useTasksStore((s) => s.updateTask);
 	const { openNew, openEdit } = useTaskModal();
 
 	const monthLabel = format(date, "LLLL yyyy", { locale: ru });
+
+	const handleNavigate = useCallback((newDate: Date) => {
+		setDate(newDate);
+	}, []);
+
+	const handlePrevious = useCallback(() => {
+		setDate((prev) => {
+			if (view === Views.DAY) return subDays(prev, 1);
+			if (view === Views.WEEK) return subWeeks(prev, 1);
+			return subMonths(prev, 1);
+		});
+	}, [view]);
+
+	const handleNext = useCallback(() => {
+		setDate((prev) => {
+			if (view === Views.DAY) return addDays(prev, 1);
+			if (view === Views.WEEK) return addWeeks(prev, 1);
+			return addMonths(prev, 1);
+		});
+	}, [view]);
 
 	const handleAddTask = useCallback(() => {
 		openNew({
@@ -88,9 +110,11 @@ export function useCalendarView() {
 
 	return {
 		date,
-		setDate,
 		events,
 		monthLabel,
+		handleNavigate,
+		handlePrevious,
+		handleNext,
 		handleSelectSlot,
 		handleSelectEvent,
 		handleEventDrop,

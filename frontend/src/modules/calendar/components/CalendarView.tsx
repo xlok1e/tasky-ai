@@ -1,37 +1,72 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, ArrowRight, Plus, Sparkles } from "lucide-react";
+import { Views } from "react-big-calendar";
+import type { View } from "react-big-calendar";
 import { Button } from "@shared/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { BigCalendar } from "@modules/calendar/components/BigCalendar";
 import { useCalendarView } from "../hooks/useCalendarView";
 
 export function CalendarView() {
+	const [view, setView] = useState<View>(Views.WEEK);
+
 	const {
 		date,
-		setDate,
 		events,
 		monthLabel,
+		handleNavigate,
+		handlePrevious,
+		handleNext,
 		handleSelectSlot,
 		handleSelectEvent,
 		handleEventDrop,
 		handleEventResize,
 		handleAddTask,
-	} = useCalendarView();
+	} = useCalendarView(view);
 
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex items-center justify-between">
-				<h1 className="text-2xl font-semibold capitalize">{monthLabel}</h1>
-				<Button variant="outline" className="gap-2" onClick={handleAddTask}>
-					<Plus size={16} />
-					Добавить задачу
-				</Button>
+			<div className="flex items-start justify-between">
+				<div className="flex flex-col gap-2">
+					<div className="flex items-center gap-1">
+						<Button variant="ghost" size="icon" onClick={handlePrevious}>
+							<ArrowLeft size={18} />
+						</Button>
+						<h1 className="text-2xl font-semibold capitalize min-w-[200px] text-center">
+							{monthLabel}
+						</h1>
+						<Button variant="ghost" size="icon" onClick={handleNext}>
+							<ArrowRight size={18} />
+						</Button>
+					</div>
+					<Button variant="outline" className="gap-2" onClick={handleAddTask}>
+						<Plus size={16} />
+						Добавить задачу
+					</Button>
+				</div>
+
+				<div className="flex items-center gap-3">
+					<Tabs value={view} onValueChange={(v) => setView(v as View)}>
+						<TabsList>
+							<TabsTrigger value={Views.DAY}>День</TabsTrigger>
+							<TabsTrigger value={Views.WEEK}>Неделя</TabsTrigger>
+							<TabsTrigger value={Views.MONTH}>Месяц</TabsTrigger>
+						</TabsList>
+					</Tabs>
+					<Button variant="outline" className="gap-2">
+						<Sparkles size={16} />
+						ИИ-ассистент
+					</Button>
+				</div>
 			</div>
 
 			<BigCalendar
 				events={events}
 				date={date}
-				onNavigate={setDate}
+				view={view}
+				onNavigate={handleNavigate}
 				onSelectSlot={handleSelectSlot}
 				onSelectEvent={handleSelectEvent}
 				onEventDrop={handleEventDrop}

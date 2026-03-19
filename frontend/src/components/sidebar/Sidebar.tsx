@@ -46,7 +46,7 @@ export function Sidebar() {
 					<div
 						className={cn(
 							"transition-all duration-0",
-							isCollapsed ? "max-w-0 opacity-0" : "max-w-xs opacity-100",
+							isCollapsed ? "max-w-0 opacity-0 pointer-events-none" : "max-w-xs opacity-100",
 						)}
 					>
 						<Link

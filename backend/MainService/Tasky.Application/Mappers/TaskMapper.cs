@@ -1,5 +1,6 @@
 using Tasky.Application.DTOs.Responses;
 using Tasky.Domain.Entities;
+using Tasky.Domain.Enums;
 
 namespace Tasky.Application.Mappers
 {
@@ -22,5 +23,17 @@ namespace Tasky.Application.Mappers
                 item.CompletedAt,
                 item.GoogleEventId
             );
+
+        public static ListResponse ToResponse(this TaskList list)
+        {
+            var uncompletedCount = list.Tasks.Count(t => t.Status != TaskCompletionStatus.Completed);
+            return new(
+                list.Id,
+                list.Name,
+                list.Color,
+                uncompletedCount,
+                list.CreatedAt
+            );
+        }
     }
 }

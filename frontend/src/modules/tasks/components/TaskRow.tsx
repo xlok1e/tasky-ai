@@ -1,7 +1,5 @@
 "use client";
 
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { Checkbox } from "@shared/ui/checkbox";
 import { useTasksStore } from "../store/tasks.store";
 import { useTaskModal } from "../store/task-modal.store";

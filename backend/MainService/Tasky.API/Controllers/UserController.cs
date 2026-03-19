@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Tasky.Application.DTOs.Requests;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 
@@ -24,5 +25,19 @@ public class MeController : ControllerBase
     {
         var profile = await _userService.GetProfileAsync(UserId);
         return profile is not null ? Ok(profile) : NotFound();
+    }
+
+    [HttpGet("settings")]
+    public async Task<ActionResult<UserSettingsResponse>> GetSettings()
+    {
+        var settings = await _userService.GetSettingsAsync(UserId);
+        return settings is not null ? Ok(settings) : NotFound();
+    }
+
+    [HttpPatch("settings")]
+    public async Task<ActionResult<UserSettingsResponse>> UpdateSettings([FromBody] UpdateUserSettingsRequest request)
+    {
+        var settings = await _userService.UpdateSettingsAsync(UserId, request);
+        return settings is not null ? Ok(settings) : NotFound();
     }
 }

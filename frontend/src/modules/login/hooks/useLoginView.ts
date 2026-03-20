@@ -31,8 +31,9 @@ export function useLoginView() {
 	}, []);
 
 	const redirectAfterLogin = () => {
+		const done = localStorage.getItem("onboarding_done");
 		const from = searchParams.get("from") ?? "/inbox";
-		router.replace(from);
+		router.replace(done ? from : "/onboarding");
 	};
 
 	const startPolling = (token: string) => {

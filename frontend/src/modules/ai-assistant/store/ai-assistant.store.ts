@@ -7,6 +7,7 @@ import {
 import { ChatRole } from "../types/ai-assistant.types";
 import type { ChatMessage, PendingTask } from "../types/ai-assistant.types";
 import { useTasksStore } from "@modules/tasks/store/tasks.store";
+import { useGoogleStore } from "@/domains/google/store/google.store";
 import { TaskPriority } from "@modules/tasks/types/task.types";
 import type { Task } from "@modules/tasks/types/task.types";
 
@@ -31,9 +32,10 @@ const PENDING_TASK_PRIORITY_MAP: Record<PendingTask["priority"], TaskPriority> =
 function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 	return {
 		id: tempId,
+		listId: null,
 		title: task.title,
 		description: task.description,
-		dueDate: task.endAt ? new Date(task.endAt) : null,
+		deadline: task.endAt ? new Date(task.endAt) : null,
 		isCompleted: false,
 		isAllDay: task.isAllDay,
 		startDate: task.startAt ? new Date(task.startAt) : null,
@@ -79,24 +81,42 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 	},
 
 	confirmTask: async (messageId: string, task: PendingTask) => {
-		// Use a negative temp ID to avoid any collision with real server IDs
 		const tempId = -Date.now();
 		const optimisticTask = pendingTaskToOptimisticTask(task, tempId);
 		const tasksStore = useTasksStore.getState();
+
+		// Mark as confirming
+		set((state) => ({
+			messages: state.messages.map((m) =>
+				m.id === messageId ? { ...m, isConfirming: true } : m,
+			),
+		}));
 
 		tasksStore._addOptimisticTask(optimisticTask);
 
 		try {
 			await apiConfirmTask(task);
 			await tasksStore.fetchTasks();
+
+			// Background sync if Google is connected (no toast)
+			const googleStore = useGoogleStore.getState();
+			if (googleStore.isConnected) {
+				googleStore.syncSilent();
+			}
+
 			set((state) => ({
 				messages: state.messages.map((m) =>
-					m.id === messageId ? { ...m, pendingTaskStatus: "confirmed" } : m,
+					m.id === messageId ? { ...m, isConfirming: false, pendingTaskStatus: "confirmed" } : m,
 				),
 			}));
 			toast.success("Задача создана успешно");
 		} catch {
 			tasksStore._removeOptimisticTask(tempId);
+			set((state) => ({
+				messages: state.messages.map((m) =>
+					m.id === messageId ? { ...m, isConfirming: false } : m,
+				),
+			}));
 		}
 	},
 

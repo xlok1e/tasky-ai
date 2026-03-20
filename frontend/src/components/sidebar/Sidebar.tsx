@@ -7,6 +7,7 @@ import { SIDEBAR_ITEMS } from "@shared/config/sidebar.config";
 import { SidebarItem } from "./SidebarItem";
 import { SidebarListItem } from "./SidebarListItem";
 import { useListsStore } from "@modules/lists/store/lists.store";
+import { useGoogleStore } from "@/domains/google/store/google.store";
 import {
 	CirclePlus,
 	LayoutList,
@@ -22,16 +23,11 @@ import { cn } from "@shared/lib/utils";
 const EXPANDED_WIDTH = 280;
 const COLLAPSED_WIDTH = 68;
 
-const BOTTOM_ITEMS = [
-	{ icon: RefreshCcw, label: "Синхронизовать", href: "/" },
-	{ icon: Send, label: "Перейти в Telegram", href: "/" },
-	{ icon: Settings, label: "Настройки", href: "/settings" },
-] as const;
-
 export function Sidebar() {
 	const pathname = usePathname();
 	const [isCollapsed, setIsCollapsed] = useState(false);
 	const lists = useListsStore((s) => s.lists);
+	const { isConnected, isSyncing, sync } = useGoogleStore();
 
 	return (
 		<aside
@@ -73,7 +69,7 @@ export function Sidebar() {
 				</div>
 
 				<nav className={cn("flex flex-col gap-1.5", isCollapsed && "items-center")}>
-					{SIDEBAR_ITEMS.map((item) => (
+					{SIDEBAR_ITEMS.filter((item) => !(isConnected && item.id === "inbox")).map((item) => (
 						<SidebarItem
 							key={item.id}
 							item={item}
@@ -83,6 +79,7 @@ export function Sidebar() {
 					))}
 				</nav>
 
+				{!isConnected && (
 				<div
 					className={cn(
 						" transition-all duration-0",
@@ -112,31 +109,74 @@ export function Sidebar() {
 						))}
 					</div>
 				</div>
+				)}
 			</div>
 
 			<div className={cn("flex flex-col gap-2", isCollapsed && "items-center")}>
-				{BOTTOM_ITEMS.map(({ icon: Icon, label, href }) => (
-					<Link
-						key={label}
-						href={href}
+				{isConnected && (
+					<button
+						onClick={() => sync()}
+						disabled={isSyncing}
 						className={cn(
-							"flex items-center rounded-[6px] transition-colors overflow-hidden hover:bg-accent/50",
+							"flex items-center rounded-[6px] transition-colors overflow-hidden hover:bg-accent/50 disabled:opacity-50",
 							isCollapsed
 								? "w-[40px] h-[40px] justify-center"
 								: "gap-2 w-full px-2.5 py-1 text-[18px]",
 						)}
 					>
-						<Icon className="size-[18px] shrink-0" strokeWidth={1.5} />
+						<RefreshCcw
+							className={cn("size-[18px] shrink-0", isSyncing && "animate-spin")}
+							strokeWidth={1.5}
+						/>
 						<span
 							className={cn(
 								"overflow-hidden whitespace-nowrap transition-all duration-0",
 								isCollapsed ? "max-w-0 opacity-0" : "max-w-xs opacity-100",
 							)}
 						>
-							{label}
+							Синхронизовать
 						</span>
-					</Link>
-				))}
+					</button>
+				)}
+				<Link
+					href="/"
+					className={cn(
+						"flex items-center rounded-[6px] transition-colors overflow-hidden hover:bg-accent/50",
+						isCollapsed
+							? "w-[40px] h-[40px] justify-center"
+							: "gap-2 w-full px-2.5 py-1 text-[18px]",
+					)}
+				>
+					<Send className="size-[18px] shrink-0" strokeWidth={1.5} />
+					<span
+						className={cn(
+							"overflow-hidden whitespace-nowrap transition-all duration-0",
+							isCollapsed ? "max-w-0 opacity-0" : "max-w-xs opacity-100",
+						)}
+					>
+						Перейти в Telegram
+					</span>
+				</Link>
+				<Link
+					href="/settings"
+					className={cn(
+						"flex items-center rounded-[6px] transition-colors overflow-hidden",
+						pathname === "/settings" ? "bg-accent" : "hover:bg-accent/50",
+						isCollapsed
+							? "w-[40px] h-[40px] justify-center"
+							: "gap-2 w-full px-2.5 py-1 text-[18px]",
+					)}
+				>
+					<Settings className="size-[18px] shrink-0" strokeWidth={1.5} />
+					<span
+						className={cn(
+							"overflow-hidden whitespace-nowrap transition-all duration-0",
+							isCollapsed ? "max-w-0 opacity-0" : "max-w-xs opacity-100",
+						)}
+					>
+						Настройки
+					</span>
+				</Link>
 			</div>
 		</aside>
 	);

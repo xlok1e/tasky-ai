@@ -11,10 +11,12 @@ namespace Tasky.Infrastructure.Services
     public class TaskService : ITaskService
     {
         private readonly AppDbContext _db;
+        private readonly IGoogleCalendarService _googleCalendar;
 
-        public TaskService(AppDbContext db)
+        public TaskService(AppDbContext db, IGoogleCalendarService googleCalendar)
         {
             _db = db;
+            _googleCalendar = googleCalendar;
         }
 
         public async Task<TaskResponse> CreateAsync(int userId, TaskCreateRequest request)
@@ -34,7 +36,7 @@ namespace Tasky.Infrastructure.Services
             {
                 if (!request.StartAt.HasValue || !request.EndAt.HasValue)
                     throw new ArgumentException("Если указывается диапазон времени, то StartAt и EndAt оба обязательны.");
-                
+
                 if (request.StartAt >= request.EndAt)
                     throw new ArgumentException("StartAt должен быть раньше EndAt.");
             }
@@ -60,6 +62,21 @@ namespace Tasky.Infrastructure.Services
 
             _db.Tasks.Add(task);
             await _db.SaveChangesAsync();
+
+            var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
+            if (googleState is not null)
+            {
+                try
+                {
+                    await _googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                    task.GoogleEventId = await _googleCalendar.CreateEventAsync(googleState, task);
+                    await _db.SaveChangesAsync();
+                }
+                catch
+                {
+                }
+            }
+
             return task.ToResponse();
         }
 
@@ -117,6 +134,23 @@ namespace Tasky.Infrastructure.Services
             task.ListId = request.ListId;
 
             await _db.SaveChangesAsync();
+
+            if (!string.IsNullOrEmpty(task.GoogleEventId))
+            {
+                var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
+                if (googleState is not null)
+                {
+                    try
+                    {
+                        await _googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                        await _googleCalendar.UpdateEventAsync(googleState, task.GoogleEventId, task);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
             return task.ToResponse();
         }
 
@@ -178,6 +212,22 @@ namespace Tasky.Infrastructure.Services
             var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == userId);
             if (task == null)
                 return false;
+
+            if (!string.IsNullOrEmpty(task.GoogleEventId))
+            {
+                var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
+                if (googleState is not null)
+                {
+                    try
+                    {
+                        await _googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                        await _googleCalendar.DeleteEventAsync(googleState, task.GoogleEventId);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
 
             _db.Tasks.Remove(task);
             await _db.SaveChangesAsync();

@@ -58,6 +58,7 @@ export interface Task {
   isAllDay: boolean;
   startDate: Date | null;
   endDate: Date | null;
+  deadline: Date | null;
   priority: TaskPriority;
 }
 
@@ -86,6 +87,7 @@ export function mapTaskResponseToTask(r: TaskResponse): Task {
     isAllDay: deriveIsAllDay(r.startAt, r.endAt),
     startDate: r.startAt ? new Date(r.startAt) : null,
     endDate: r.endAt ? new Date(r.endAt) : null,
+    deadline: r.deadline ? new Date(r.deadline) : null,
     priority: r.priority,
   };
 }

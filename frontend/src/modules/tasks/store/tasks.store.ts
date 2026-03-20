@@ -8,6 +8,7 @@ import {
 import { mapTaskResponseToTask, TaskPriority, TaskStatus } from "../types/task.types";
 import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../types/task.types";
 import { toastMessage } from "@/shared/toast/toast";
+import { useGoogleStore } from "@/domains/google/store/google.store";
 
 interface TasksState {
 	tasks: Task[];
@@ -21,6 +22,7 @@ interface TasksState {
 		title: string,
 		startDate?: Date | null,
 		endDate?: Date | null,
+		deadline?: Date | null,
 		isAllDay?: boolean,
 		listId?: number | null,
 		priority?: TaskPriority,
@@ -37,6 +39,7 @@ interface TasksState {
 				| "startDate"
 				| "endDate"
 				| "isAllDay"
+				| "deadline"
 				| "priority"
 				| "listId"
 			>
@@ -72,13 +75,14 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		title,
 		startDate = null,
 		endDate = null,
+		deadline = null,
 		isAllDay = false,
 		listId = null,
 		priority = TaskPriority.Low,
 	) => {
 		const request: CreateTaskRequest = {
 			title: title.trim(),
-			deadline: null,
+			deadline: deadline ? deadline.toISOString() : null,
 			startAt: startDate ? startDate.toISOString() : null,
 			endAt: endDate ? endDate.toISOString() : null,
 			priority,
@@ -90,6 +94,12 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			task.isAllDay = true;
 		}
 		set((state) => ({ tasks: [task, ...state.tasks] }));
+
+		// Background sync if Google Calendar is connected
+		const googleStore = useGoogleStore.getState();
+		if (googleStore.isConnected) {
+			googleStore.syncSilent();
+		}
 	},
 
 	toggleTask: async (task: Task) => {
@@ -102,7 +112,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			description: task.description,
 			startAt: task.startDate ? task.startDate.toISOString() : null,
 			endAt: task.endDate ? task.endDate.toISOString() : null,
-			deadline: null,
+			deadline: task.deadline ? task.deadline.toISOString() : null,
 			priority: task.priority,
 			status: task.isCompleted ? TaskStatus.InProgress : TaskStatus.Completed,
 			listId: task.listId,
@@ -138,7 +148,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			description: merged.description,
 			startAt: merged.startDate ? merged.startDate.toISOString() : null,
 			endAt: merged.endDate ? merged.endDate.toISOString() : null,
-			deadline: null,
+			deadline: merged.deadline ? merged.deadline.toISOString() : null,
 			priority: merged.priority,
 			status: merged.isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
 			listId: merged.listId,

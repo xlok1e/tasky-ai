@@ -2,6 +2,7 @@
 
 import { cn } from "@shared/lib/utils";
 import { Button } from "@shared/ui/button";
+import { Spinner } from "@shared/ui/spinner";
 import { Check, X, Calendar, AlignLeft, Flag } from "lucide-react";
 import { ChatRole } from "../types/ai-assistant.types";
 import type { ChatMessage as ChatMessageType, PendingTask } from "../types/ai-assistant.types";
@@ -76,11 +77,23 @@ export function ChatMessage({ message, onConfirm, onReject }: ChatMessageProps) 
 
 			{hasPendingTask && !pendingTaskStatus && (
 				<div className="flex gap-2 ml-1">
-					<Button size="sm" variant="default" className="h-7 gap-1.5 text-xs" onClick={onConfirm}>
-						<Check size={13} />
+					<Button
+						size="sm"
+						variant="default"
+						className="h-7 gap-1.5 text-xs"
+						onClick={onConfirm}
+						disabled={message.isConfirming}
+					>
+						{message.isConfirming ? <Spinner className="h-3 w-3" /> : <Check size={13} />}
 						Подтвердить
 					</Button>
-					<Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={onReject}>
+					<Button
+						size="sm"
+						variant="outline"
+						className="h-7 gap-1.5 text-xs"
+						onClick={onReject}
+						disabled={message.isConfirming}
+					>
 						<X size={13} />
 						Отклонить
 					</Button>

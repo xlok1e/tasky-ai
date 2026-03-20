@@ -20,11 +20,6 @@ function toInputDateTime(date: Date | null | undefined): string {
 	return format(date, "yyyy-MM-dd'T'HH:mm");
 }
 
-function toInputDate(date: Date | null | undefined): string {
-	if (!date) return "";
-	return format(date, "yyyy-MM-dd");
-}
-
 const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] = [
 	{ value: TaskPriority.Low, label: "Низкий", color: "text-muted-foreground" },
 	{ value: TaskPriority.Medium, label: "Средний", color: "text-yellow-500" },
@@ -40,7 +35,6 @@ export function TaskModal() {
 	const [isCompleted, setIsCompleted] = useState(false);
 	const [startValue, setStartValue] = useState("");
 	const [endValue, setEndValue] = useState("");
-	const [dateValue, setDateValue] = useState("");
 	const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Low);
 	const [listId, setListId] = useState<number | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
@@ -52,7 +46,6 @@ export function TaskModal() {
 			setIsCompleted(editingTask?.isCompleted ?? false);
 			setStartValue(toInputDateTime(editingTask?.startDate ?? prefill?.startDate ?? null));
 			setEndValue(toInputDateTime(editingTask?.endDate ?? prefill?.endDate ?? null));
-			setDateValue(toInputDate(editingTask?.dueDate ?? null));
 			setPriority(editingTask?.priority ?? TaskPriority.Low);
 			setListId(editingTask?.listId ?? prefill?.listId ?? null);
 			setIsSaving(false);
@@ -66,7 +59,6 @@ export function TaskModal() {
 
 		const startDate = startValue ? new Date(startValue) : null;
 		const endDate = endValue ? new Date(endValue) : null;
-		const dueDate = dateValue ? new Date(dateValue) : null;
 
 		setIsSaving(true);
 		try {
@@ -74,14 +66,13 @@ export function TaskModal() {
 				await updateTask(editingTask.id, {
 					title: trimmed,
 					isCompleted,
-					dueDate,
 					startDate,
 					endDate,
 					priority,
 					listId,
 				});
 			} else {
-				await addTask(trimmed, dueDate, startDate, endDate, false, listId, priority);
+				await addTask(trimmed, startDate, endDate, null, false, listId, priority);
 			}
 			close();
 		} finally {
@@ -155,20 +146,6 @@ export function TaskModal() {
 								className="w-full text-sm"
 							/>
 						</div>
-					</div>
-
-					{/* Deadline */}
-					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="modal-date" className="text-xs text-muted-foreground">
-							Дедлайн
-						</Label>
-						<Input
-							id="modal-date"
-							type="date"
-							value={dateValue}
-							onChange={(e) => setDateValue(e.target.value)}
-							className="w-full text-sm"
-						/>
 					</div>
 
 					{/* List */}

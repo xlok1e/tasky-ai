@@ -18,6 +18,7 @@ export interface ChatMessage {
 	content: string;
 	pendingTask?: PendingTask | null;
 	pendingTaskStatus?: "confirmed" | "rejected" | null;
+	isConfirming?: boolean;
 }
 
 export interface ChatRequest {

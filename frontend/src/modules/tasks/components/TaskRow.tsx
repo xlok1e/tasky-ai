@@ -1,7 +1,5 @@
 "use client";
 
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { Checkbox } from "@shared/ui/checkbox";
 import { useTasksStore } from "../store/tasks.store";
 import { useTaskModal } from "../store/task-modal.store";
@@ -36,11 +34,6 @@ export function TaskRow({ task }: TaskRowProps) {
 			>
 				{task.title}
 			</span>
-			{task.dueDate && (
-				<span className="shrink-0 text-xs text-muted-foreground">
-					{format(task.dueDate, "d MMM", { locale: ru })}
-				</span>
-			)}
 		</div>
 	);
 }

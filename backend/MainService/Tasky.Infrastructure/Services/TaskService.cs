@@ -11,10 +11,12 @@ namespace Tasky.Infrastructure.Services
     public class TaskService : ITaskService
     {
         private readonly AppDbContext _db;
+        private readonly IGoogleCalendarService _googleCalendar;
 
-        public TaskService(AppDbContext db)
+        public TaskService(AppDbContext db, IGoogleCalendarService googleCalendar)
         {
             _db = db;
+            _googleCalendar = googleCalendar;
         }
 
         public async Task<TaskResponse> CreateAsync(int userId, TaskCreateRequest request)
@@ -34,7 +36,7 @@ namespace Tasky.Infrastructure.Services
             {
                 if (!request.StartAt.HasValue || !request.EndAt.HasValue)
                     throw new ArgumentException("Если указывается диапазон времени, то StartAt и EndAt оба обязательны.");
-                
+
                 if (request.StartAt >= request.EndAt)
                     throw new ArgumentException("StartAt должен быть раньше EndAt.");
             }
@@ -60,6 +62,21 @@ namespace Tasky.Infrastructure.Services
 
             _db.Tasks.Add(task);
             await _db.SaveChangesAsync();
+
+            var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
+            if (googleState is not null)
+            {
+                try
+                {
+                    await _googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                    task.GoogleEventId = await _googleCalendar.CreateEventAsync(googleState, task);
+                    await _db.SaveChangesAsync();
+                }
+                catch
+                {
+                }
+            }
+
             return task.ToResponse();
         }
 
@@ -70,6 +87,24 @@ namespace Tasky.Infrastructure.Services
                 .FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == userId)
                 ?? throw new KeyNotFoundException("Задача не найдена");
 
+            if (string.IsNullOrWhiteSpace(request.Title))
+                throw new ArgumentException("Название задачи не может быть пустым.");
+
+            var hasTimeRange = request.StartAt.HasValue || request.EndAt.HasValue;
+            var hasDeadline = request.Deadline.HasValue;
+
+            if (hasTimeRange && hasDeadline)
+                throw new ArgumentException("Нельзя указывать одновременно диапазон времени (StartAt/EndAt) и Deadline.");
+
+            if (hasTimeRange)
+            {
+                if (!request.StartAt.HasValue || !request.EndAt.HasValue)
+                    throw new ArgumentException("Если указывается диапазон времени, то StartAt и EndAt оба обязательны.");
+
+                if (request.StartAt >= request.EndAt)
+                    throw new ArgumentException("StartAt должен быть раньше EndAt.");
+            }
+
             if (request.ListId.HasValue && request.ListId != task.ListId)
             {
                 var listExists = await _db.Lists.AnyAsync(l => l.Id == request.ListId.Value && l.UserId == userId);
@@ -77,8 +112,8 @@ namespace Tasky.Infrastructure.Services
                     throw new KeyNotFoundException("Список задач не найден или не принадлежит пользователю.");
             }
 
-            task.Title = request.Title;
-            task.Description = request.Description;
+            task.Title = request.Title.Trim();
+            task.Description = request.Description?.Trim();
             task.StartAt = request.StartAt;
             task.EndAt = request.EndAt;
             task.Deadline = request.Deadline;
@@ -99,6 +134,23 @@ namespace Tasky.Infrastructure.Services
             task.ListId = request.ListId;
 
             await _db.SaveChangesAsync();
+
+            if (!string.IsNullOrEmpty(task.GoogleEventId))
+            {
+                var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
+                if (googleState is not null)
+                {
+                    try
+                    {
+                        await _googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                        await _googleCalendar.UpdateEventAsync(googleState, task.GoogleEventId, task);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
             return task.ToResponse();
         }
 
@@ -111,53 +163,47 @@ namespace Tasky.Infrastructure.Services
             return task?.ToResponse();
         }
 
-        public async Task<IEnumerable<TaskResponse>> GetAllAsync(int userId, int? list_id, string? priority, DateTime? due_date, string? status, int? offset, int? limit, string? sort = "deadline")
+        public async Task<IEnumerable<TaskSummaryResponse>> GetAllAsync(
+            int userId,
+            int? listId,
+            Tasky.Domain.Enums.TaskPriority? priority,
+            DateTime? dueDate,
+            Tasky.Domain.Enums.TaskCompletionStatus? status,
+            int? offset,
+            int? limit,
+            string? sort = "deadline")
         {
             var query = _db.Tasks
                 .Include(t => t.List)
                 .Where(t => t.UserId == userId);
-            if (list_id.HasValue)
-            {
-                query = query.Where(t => t.ListId == list_id.Value);
-            }
-            if (!string.IsNullOrEmpty(priority))
-            {
-                if (Enum.TryParse<Tasky.Domain.Enums.TaskPriority>(priority, true, out var p))
-                {
-                    query = query.Where(t => t.Priority == p);
-                }
-            }
-            if (due_date.HasValue)
-            {
-                query = query.Where(t => t.Deadline.HasValue && t.Deadline.Value.Date == due_date.Value.Date);
-            }
-            if (!string.IsNullOrEmpty(status))
-            {
-                if (Enum.TryParse<Tasky.Domain.Enums.TaskCompletionStatus>(status, true, out var s))
-                {
-                    query = query.Where(t => t.Status == s);
-                }
-            }
 
-            // Apply sorting
+            if (listId.HasValue)
+                query = query.Where(t => t.ListId == listId.Value);
+
+            if (priority.HasValue)
+                query = query.Where(t => t.Priority == priority.Value);
+
+            if (dueDate.HasValue)
+                query = query.Where(t => t.Deadline.HasValue && t.Deadline.Value.Date == dueDate.Value.Date);
+
+            if (status.HasValue)
+                query = query.Where(t => t.Status == status.Value);
+
             query = (sort?.ToLower() ?? "deadline") switch
             {
                 "priority" => query.OrderByDescending(t => t.Priority),
-                "created" => query.OrderByDescending(t => t.CreatedAt),
-                _ => query.OrderBy(t => t.Deadline ?? DateTime.MaxValue)
+                "created"  => query.OrderByDescending(t => t.CreatedAt),
+                _          => query.OrderBy(t => t.Deadline ?? DateTime.MaxValue)
             };
 
             if (offset.HasValue)
-            {
                 query = query.Skip(offset.Value);
-            }
 
             if (limit.HasValue)
-            {
                 query = query.Take(limit.Value);
-            }
+
             return await query
-                .Select(t => t.ToResponse())
+                .Select(t => t.ToSummaryResponse())
                 .ToListAsync();
         }
 
@@ -166,6 +212,22 @@ namespace Tasky.Infrastructure.Services
             var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == userId);
             if (task == null)
                 return false;
+
+            if (!string.IsNullOrEmpty(task.GoogleEventId))
+            {
+                var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
+                if (googleState is not null)
+                {
+                    try
+                    {
+                        await _googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                        await _googleCalendar.DeleteEventAsync(googleState, task.GoogleEventId);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
 
             _db.Tasks.Remove(task);
             await _db.SaveChangesAsync();

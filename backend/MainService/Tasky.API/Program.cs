@@ -17,6 +17,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.WriteIndented = true;
     });
 
+
 // Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -47,6 +48,7 @@ builder.Services.AddSwaggerGen(c =>
 	});
 });
 builder.Services.AddScoped<IAiAssistantService, GeminiService>();
+builder.Services.AddScoped<Tasky.Application.Interfaces.IGoogleCalendarService, GoogleCalendarService>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

@@ -170,6 +170,9 @@ namespace Tasky.Infrastructure.Migrations
                     b.Property<string>("GoogleEventId")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsAllDay")
+                        .HasColumnType("boolean");
+
                     b.Property<int?>("ListId")
                         .HasColumnType("integer");
 

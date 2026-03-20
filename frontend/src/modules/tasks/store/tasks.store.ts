@@ -7,6 +7,7 @@ import {
 } from "../api/tasks.api";
 import { mapTaskResponseToTask, TaskPriority, TaskStatus } from "../types/task.types";
 import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../types/task.types";
+import { toastMessage } from "@/shared/toast/toast";
 
 interface TasksState {
 	tasks: Task[];
@@ -14,12 +15,15 @@ interface TasksState {
 	error: string | null;
 
 	fetchTasks: () => Promise<void>;
+	_addOptimisticTask: (task: Task) => void;
+	_removeOptimisticTask: (id: number) => void;
 	addTask: (
 		title: string,
-		dueDate: Date | null,
 		startDate?: Date | null,
 		endDate?: Date | null,
 		isAllDay?: boolean,
+		listId?: number | null,
+		priority?: TaskPriority,
 	) => Promise<void>;
 	toggleTask: (task: Task) => Promise<void>;
 	updateTask: (
@@ -27,7 +31,14 @@ interface TasksState {
 		patch: Partial<
 			Pick<
 				Task,
-				"title" | "description" | "dueDate" | "isCompleted" | "startDate" | "endDate" | "isAllDay"
+				| "title"
+				| "description"
+				| "isCompleted"
+				| "startDate"
+				| "endDate"
+				| "isAllDay"
+				| "priority"
+				| "listId"
 			>
 		>,
 	) => Promise<void>;
@@ -49,13 +60,29 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		}
 	},
 
-	addTask: async (title, dueDate, startDate = null, endDate = null, isAllDay = false) => {
+	_addOptimisticTask: (task: Task) => {
+		set((state) => ({ tasks: [task, ...state.tasks] }));
+	},
+
+	_removeOptimisticTask: (id: number) => {
+		set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+	},
+
+	addTask: async (
+		title,
+		startDate = null,
+		endDate = null,
+		isAllDay = false,
+		listId = null,
+		priority = TaskPriority.Low,
+	) => {
 		const request: CreateTaskRequest = {
 			title: title.trim(),
-			deadline: dueDate ? dueDate.toISOString() : null,
+			deadline: null,
 			startAt: startDate ? startDate.toISOString() : null,
 			endAt: endDate ? endDate.toISOString() : null,
-			priority: TaskPriority.Low,
+			priority,
+			listId: listId ?? null,
 		};
 		const created = await apiCreateTask(request);
 		const task = mapTaskResponseToTask(created);
@@ -75,9 +102,10 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			description: task.description,
 			startAt: task.startDate ? task.startDate.toISOString() : null,
 			endAt: task.endDate ? task.endDate.toISOString() : null,
-			deadline: task.dueDate ? task.dueDate.toISOString() : null,
+			deadline: null,
 			priority: task.priority,
 			status: task.isCompleted ? TaskStatus.InProgress : TaskStatus.Completed,
+			listId: task.listId,
 		};
 
 		try {
@@ -101,24 +129,36 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
 		const merged: Task = { ...current, ...patch };
 
+		set((state) => ({
+			tasks: state.tasks.map((t) => (t.id === id ? merged : t)),
+		}));
+
 		const request: UpdateTaskRequest = {
 			title: merged.title,
 			description: merged.description,
 			startAt: merged.startDate ? merged.startDate.toISOString() : null,
 			endAt: merged.endDate ? merged.endDate.toISOString() : null,
-			deadline: merged.dueDate ? merged.dueDate.toISOString() : null,
+			deadline: null,
 			priority: merged.priority,
 			status: merged.isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
+			listId: merged.listId,
 		};
 
-		const updated = await apiUpdateTask(id, request);
-		const updatedTask = mapTaskResponseToTask(updated);
-		if (patch.isAllDay !== undefined) {
-			updatedTask.isAllDay = patch.isAllDay;
+		try {
+			const updated = await apiUpdateTask(id, request);
+			const updatedTask = mapTaskResponseToTask(updated);
+			if (patch.isAllDay !== undefined) {
+				updatedTask.isAllDay = patch.isAllDay;
+			}
+			set((state) => ({
+				tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
+			}));
+		} catch {
+			set((state) => ({
+				tasks: state.tasks.map((t) => (t.id === id ? current : t)),
+			}));
+			toastMessage.showError("Не удалось обновить задачу");
 		}
-		set((state) => ({
-			tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
-		}));
 	},
 
 	deleteTask: async (id) => {

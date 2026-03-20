@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "sonner";
+import { Providers } from "./providers";
 
-const interSans = Inter({
-	subsets: ["latin", "cyrillic"],
-	variable: "--font-inter",
+const lineSeedJP = localFont({
+	src: [
+		{ path: "../../public/fonts/LINESeedJP-Thin.ttf", weight: "100" },
+		{ path: "../../public/fonts/LINESeedJP-Regular.ttf", weight: "400" },
+		{ path: "../../public/fonts/LINESeedJP-Bold.ttf", weight: "700" },
+		{ path: "../../public/fonts/LINESeedJP-ExtraBold.ttf", weight: "800" },
+	],
+	variable: "--font-line-seed-jp",
 });
 
 export const metadata: Metadata = {
@@ -18,13 +24,15 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<body
-				className={`${interSans.variable} antialiased bg-background`}
+				className={`${lineSeedJP.variable} antialiased bg-background`}
 				suppressHydrationWarning={true}
 			>
-				{children}
-				<Toaster />
+				<Providers>
+					{children}
+					<Toaster />
+				</Providers>
 			</body>
 		</html>
 	);

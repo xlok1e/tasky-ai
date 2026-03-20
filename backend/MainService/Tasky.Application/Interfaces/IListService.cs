@@ -10,7 +10,8 @@ namespace Tasky.Application.Interfaces
         Task<ListResponse?> GetByIdAsync(int userId, int listId);
         Task<IEnumerable<ListResponse>> GetAllAsync(int userId);
         Task<bool> DeleteAsync(int userId, int listId);
-        Task<ListTasksResponse> GetListTasksAsync(int userId, int listId, int? priority, DateTime? due_date, string? status, int? offset, int? limit, string? sort = "deadline");
+        Task<ListTasksResponse> GetListTasksAsync(int userId, int listId, string? priority, DateTime? dueDate, string? status, int? offset, int? limit, string? sort = "deadline");
         Task<TaskResponse> CreateTaskInListAsync(int userId, int listId, TaskCreateRequest request);
     }
 }
+

@@ -4,6 +4,7 @@ import type { Task } from "../types/task.types";
 export interface TaskModalPrefill {
   startDate?: Date;
   endDate?: Date;
+  listId?: number | null;
 }
 
 interface TaskModalState {

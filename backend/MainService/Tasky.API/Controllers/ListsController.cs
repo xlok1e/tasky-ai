@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Tasky.Application.DTOs.Requests;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
+using Tasky.Domain.Enums;
 
 namespace Tasky.API.Controllers
 {
@@ -64,13 +65,26 @@ namespace Tasky.API.Controllers
         [HttpGet("{id}/tasks")]
         public async Task<ActionResult<ListTasksResponse>> GetListTasks(
             int id,
-            [FromQuery] int? priority,
-            [FromQuery] DateTime? due_date,
+            [FromQuery] string? priority,
+            [FromQuery] DateTime? dueDate,
             [FromQuery] string? status,
             [FromQuery] int? offset,
-            [FromQuery] int? limit)
+            [FromQuery] int? limit,
+            [FromQuery] string? sort)
         {
-            var result = await _listService.GetListTasksAsync(UserId, id, priority, due_date, status, offset, limit);
+            if (!string.IsNullOrEmpty(priority) && !Enum.TryParse<TaskPriority>(priority, true, out _))
+                return BadRequest($"Недопустимое значение priority: '{priority}'.");
+
+            if (!string.IsNullOrEmpty(status) && !Enum.TryParse<TaskCompletionStatus>(status, true, out _))
+                return BadRequest($"Недопустимое значение status: '{status}'.");
+
+            if (offset.HasValue && offset.Value < 0)
+                return BadRequest("offset не может быть отрицательным.");
+
+            if (limit.HasValue && (limit.Value < 1 || limit.Value > 500))
+                return BadRequest("limit должен быть от 1 до 500.");
+
+            var result = await _listService.GetListTasksAsync(UserId, id, priority, dueDate, status, offset, limit, sort);
             return Ok(result);
         }
 
@@ -83,3 +97,4 @@ namespace Tasky.API.Controllers
         }
     }
 }
+

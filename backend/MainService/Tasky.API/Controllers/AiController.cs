@@ -48,10 +48,32 @@ namespace Tasky.API.Controllers
 			return Ok(new TaskConfirmResponse { TaskId = taskId, Title = request.Task.Title });
 		}
 
+		[HttpPost("confirm-update")]
+		public async Task<ActionResult<TaskResponse>> ConfirmUpdate([FromBody] AiConfirmUpdateRequest request)
+		{
+			if (request.Update is null) return BadRequest("Update data is required");
+
+			var userId = GetUserId();
+			if (userId is null) return Unauthorized();
+
+			var result = await _aiService.ConfirmUpdateAsync(userId.Value, request.Update);
+			return Ok(result);
+		}
+
+		[HttpPost("confirm-delete")]
+		public async Task<IActionResult> ConfirmDelete([FromBody] AiConfirmDeleteRequest request)
+		{
+			var userId = GetUserId();
+			if (userId is null) return Unauthorized();
+
+			var deleted = await _aiService.ConfirmDeleteAsync(userId.Value, request.TaskId);
+			return deleted ? NoContent() : NotFound();
+		}
+
 		private int? GetUserId()
 		{
 			var claim = User.FindFirstValue("userId");
-      return int.TryParse(claim, out var id) ? id : null;
+			return int.TryParse(claim, out var id) ? id : null;
 		}
 	}
 }

@@ -8,8 +8,6 @@ using Tasky.Infrastructure.ExternalServices;
 
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
 builder.Services.AddControllers();
 
 // Configure Swagger/OpenAPI
@@ -42,6 +40,7 @@ builder.Services.AddSwaggerGen(c =>
 	});
 });
 builder.Services.AddScoped<IAiAssistantService, GeminiService>();
+builder.Services.AddScoped<Tasky.Application.Interfaces.IGoogleCalendarService, GoogleCalendarService>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

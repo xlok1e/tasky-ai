@@ -149,6 +149,28 @@ public class TelegramBotService(
 
         await db.SaveChangesAsync(ct);
 
+        // Create default settings for new users
+        var existingSettings = await db.UserSettings
+            .FirstOrDefaultAsync(s => s.UserId == user.Id, ct);
+
+        if (existingSettings is null)
+        {
+            var userSettings = new Domain.Entities.UserSettings
+            {
+                UserId = user.Id,
+                WorkDayStart = new TimeOnly(9, 0),
+                WorkDayEnd = new TimeOnly(19, 0),
+                TimeZone = "Europe/Moscow",
+                MorningNotificationsEnabled = true,
+                MorningNotificationTime = new TimeOnly(9, 0),
+                EveningNotificationsEnabled = true,
+                EveningNotificationTime = new TimeOnly(19, 0),
+                UseBuiltinCalendar = true
+            };
+            db.UserSettings.Add(userSettings);
+            await db.SaveChangesAsync(ct);
+        }
+
         await bot.SendMessage(chatId,
             $"✅ Авторизация успешна, {user.Username}!\n\nТеперь вы можете использовать TaskyAI через Telegram.",
             replyMarkup: new ReplyKeyboardRemove(),

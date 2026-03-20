@@ -8,7 +8,15 @@ using Tasky.Infrastructure.ExternalServices;
 
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllers();
+
+// Add services to the container.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.JsonSerializerOptions.WriteIndented = true;
+    });
+
 
 // Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -62,6 +70,8 @@ builder.Services.AddScoped<Tasky.Application.Interfaces.IJwtService, Tasky.Infra
 builder.Services.AddScoped<Tasky.Application.Interfaces.ITaskService, Tasky.Infrastructure.Services.TaskService>();
 
 builder.Services.AddScoped<Tasky.Application.Interfaces.IListService, Tasky.Infrastructure.Services.ListService>();
+
+builder.Services.AddScoped<Tasky.Application.Interfaces.IUserService, Tasky.Infrastructure.Services.UserService>();
 
 builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 {

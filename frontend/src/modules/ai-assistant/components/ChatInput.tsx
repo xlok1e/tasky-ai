@@ -45,8 +45,8 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
 	};
 
 	return (
-		<div className="flex items-end gap-2">
-			<div className="flex flex-col items-start">
+		<div className="flex items-end gap-2 w-full">
+			<div className="flex flex-col items-start w-full">
 				{isLoading && (
 					<span
 						className="inline-block mb-2 text-sm select-none"

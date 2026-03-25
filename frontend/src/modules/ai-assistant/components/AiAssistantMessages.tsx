@@ -34,7 +34,7 @@ export function AiAssistantMessages({
 					</>
 				)}
 
-				<div className="mt-3">
+				<div className="flex flex-col mt-3 gap-4">
 					{messages.map((message) => (
 						<ChatMessage
 							key={message.id}

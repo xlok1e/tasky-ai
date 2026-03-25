@@ -5,6 +5,7 @@ using Telegram.Bot;
 using Tasky.Infrastructure.Services;
 using Tasky.Application.Interfaces;
 using Tasky.Infrastructure.ExternalServices;
+using System.Net.Http.Headers;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -47,7 +48,7 @@ builder.Services.AddSwaggerGen(c =>
 		}
 	});
 });
-builder.Services.AddScoped<IAiAssistantService, GeminiService>();
+builder.Services.AddScoped<IAiAssistantService, GptunnelService>();
 builder.Services.AddScoped<Tasky.Application.Interfaces.IGoogleCalendarService, GoogleCalendarService>();
 
 // Configure CORS
@@ -81,6 +82,13 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 });
 
 builder.Services.AddHostedService<TelegramBotService>();
+
+builder.Services.AddHttpClient("gptunnel", client =>
+{
+    client.BaseAddress = new Uri("https://gptunnel.ru/");
+    client.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", builder.Configuration["GPTunnel:ApiKey"]);
+});
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer(options =>

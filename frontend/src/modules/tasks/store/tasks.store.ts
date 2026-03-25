@@ -48,21 +48,19 @@ interface TasksState {
 	deleteTask: (id: number) => Promise<void>;
 }
 
-<<<<<<< Updated upstream
-=======
 function buildRequest(task: Task): UpdateTaskRequest {
 	return {
 		title: task.title,
 		description: task.description,
 		startAt: task.startDate ? task.startDate.toISOString() : null,
 		endAt: task.endDate ? task.endDate.toISOString() : null,
+		deadline: task.deadline ? task.deadline.toISOString() : null,
 		priority: task.priority,
 		status: task.isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
 		listId: task.listId,
 	};
 }
 
->>>>>>> Stashed changes
 export const useTasksStore = create<TasksState>((set, get) => ({
 	tasks: [],
 	isLoading: false,
@@ -124,20 +122,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			tasks: state.tasks.map((t) => (t.id === task.id ? { ...t, isCompleted: newIsCompleted } : t)),
 		}));
 
-<<<<<<< Updated upstream
-		const request: UpdateTaskRequest = {
-			title: task.title,
-			description: task.description,
-			startAt: task.startDate ? task.startDate.toISOString() : null,
-			endAt: task.endDate ? task.endDate.toISOString() : null,
-			deadline: task.deadline ? task.deadline.toISOString() : null,
-			priority: task.priority,
-			status: task.isCompleted ? TaskStatus.InProgress : TaskStatus.Completed,
-			listId: task.listId,
-		};
-=======
 		const request = buildRequest({ ...task, isCompleted: newIsCompleted });
->>>>>>> Stashed changes
 
 		try {
 			const updated = await apiUpdateTask(task.id, request);

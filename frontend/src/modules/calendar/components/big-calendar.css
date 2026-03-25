@@ -467,9 +467,9 @@ button.rbc-input::-moz-focus-inner {
 }
 .rbc-day-slot .rbc-events-container {
 	bottom: 0;
-	left: 0;
+	left: 2;
 	position: absolute;
-	right: 0;
+	right: 2;
 	top: 0;
 }
 .rbc-day-slot .rbc-events-container.rbc-is-rtl {

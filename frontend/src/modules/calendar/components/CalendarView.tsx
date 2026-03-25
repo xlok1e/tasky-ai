@@ -60,7 +60,7 @@ export function CalendarView() {
 					<div
 						className="overflow-hidden transition-all duration-200 ease-in-out"
 						style={{
-							width: isAssistantChatOpen ? 0 : "200px",
+							width: isAssistantChatOpen ? 0 : "180px",
 							opacity: isAssistantChatOpen ? 0 : 1,
 						}}
 					>

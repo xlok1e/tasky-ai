@@ -10,10 +10,7 @@ import { useTasksStore } from "@modules/tasks/store/tasks.store";
 import { useGoogleStore } from "@/domains/google/store/google.store";
 import { TaskPriority } from "@modules/tasks/types/task.types";
 import type { Task } from "@modules/tasks/types/task.types";
-<<<<<<< Updated upstream
-=======
 import { formatDateRange } from "../utils/ai-assistsnt-utils";
->>>>>>> Stashed changes
 
 interface AiAssistantState {
 	messages: ChatMessage[];
@@ -47,6 +44,7 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 		isAllDay: task.isAllDay,
 		startDate: task.startAt ? new Date(task.startAt) : null,
 		endDate: task.endAt ? new Date(task.endAt) : null,
+		deadline: null,
 		priority: PENDING_TASK_PRIORITY_MAP[task.priority],
 	};
 }
@@ -107,9 +105,7 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 
 		// Mark as confirming
 		set((state) => ({
-			messages: state.messages.map((m) =>
-				m.id === messageId ? { ...m, isConfirming: true } : m,
-			),
+			messages: state.messages.map((m) => (m.id === messageId ? { ...m, isConfirming: true } : m)),
 		}));
 
 		tasksStore._addOptimisticTask(optimisticTask);

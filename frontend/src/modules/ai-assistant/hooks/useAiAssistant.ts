@@ -6,6 +6,18 @@ export function useAiAssistant() {
 	const sendMessage = useAiAssistantStore((s) => s.sendMessage);
 	const confirmTask = useAiAssistantStore((s) => s.confirmTask);
 	const rejectTask = useAiAssistantStore((s) => s.rejectTask);
+	const isAssistantChatOpen = useAiAssistantStore((s) => s.isAssistantChatOpen);
+	const onCloseAssistantChat = useAiAssistantStore((s) => s.onCloseAssistantChat);
+	const onOpenAssistantChat = useAiAssistantStore((s) => s.onOpenAssistantChat);
 
-	return { messages, isLoading, sendMessage, confirmTask, rejectTask };
+	return {
+		messages,
+		isLoading,
+		sendMessage,
+		confirmTask,
+		rejectTask,
+		isAssistantChatOpen,
+		onCloseAssistantChat,
+		onOpenAssistantChat,
+	};
 }

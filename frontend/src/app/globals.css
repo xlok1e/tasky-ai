@@ -167,3 +167,62 @@
 		@apply bg-background text-foreground;
 	}
 }
+
+@keyframes text-shimmer {
+	0% {
+		background-position: 150% center;
+	}
+	100% {
+		background-position: -50% center;
+	}
+}
+
+@keyframes dot1-fade {
+	0%,
+	100% {
+		opacity: 0;
+	}
+	10% {
+		opacity: 1;
+	}
+	70% {
+		opacity: 1;
+	}
+	80% {
+		opacity: 0;
+	}
+}
+
+@keyframes dot2-fade {
+	0%,
+	30%,
+	100% {
+		opacity: 0;
+	}
+	40% {
+		opacity: 1;
+	}
+	70% {
+		opacity: 1;
+	}
+	80% {
+		opacity: 0;
+	}
+}
+
+@keyframes dot3-fade {
+	0%,
+	50%,
+	100% {
+		opacity: 0;
+	}
+	60% {
+		opacity: 1;
+	}
+	70% {
+		opacity: 1;
+	}
+	80% {
+		opacity: 0;
+	}
+}

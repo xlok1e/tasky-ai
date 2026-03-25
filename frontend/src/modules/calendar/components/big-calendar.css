@@ -19,7 +19,7 @@ button.rbc-input::-moz-focus-inner {
 }
 .rbc-calendar {
 	box-sizing: border-box;
-	height: max-content;
+	height: 100%;
 	display: -webkit-flex;
 	display: -ms-flexbox;
 	display: flex;
@@ -715,6 +715,7 @@ button.rbc-input::-moz-focus-inner {
 .calendar-event-title {
 	display: -webkit-box;
 	-webkit-line-clamp: 3;
+	line-clamp: 3;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 	font-size: 14px;
@@ -735,6 +736,18 @@ button.rbc-input::-moz-focus-inner {
 	white-space: nowrap;
 	opacity: 0.9;
 	flex-shrink: 0;
+	-webkit-line-clamp: 1;
+	overflow: hidden;
+	line-clamp: 1;
+}
+
+.rbc-event.event-compact {
+	padding-top: 0px;
+}
+
+.rbc-event.event-compact .calendar-event-title {
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
 }
 .rbc-current-time-indicator {
 	background-color: var(--destructive) !important;

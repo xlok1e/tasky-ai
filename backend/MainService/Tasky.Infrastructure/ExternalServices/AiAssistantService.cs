@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Tasky.Application.DTOs.Responses;
@@ -19,7 +20,11 @@ namespace Tasky.Infrastructure.ExternalServices
 
         private const string ModelName = "gemini-2.5-flash";
         private const string HttpClientName = "gptunnel";
-        private const int MaxHistoryMessages = 20;
+        private const int MaxHistoryMessages = 5;
+        private const int TasksMaxCount = 10;
+        private const int TasksUpcomingDays = 14;
+
+        private const int QueryTasksMaxDisplay = 15;
 
         public GptunnelService(IHttpClientFactory httpClientFactory, AppDbContext db, IGoogleCalendarService googleCalendar)
         {
@@ -35,7 +40,8 @@ namespace Tasky.Infrastructure.ExternalServices
 
             var isGoogleConnected = await _googleCalendar.IsConnectedAsync(userId);
             var taskContext = await LoadUserTasksContextAsync(userId);
-            var systemPrompt = BuildSystemPrompt(isGoogleConnected, taskContext);
+            var listsContext = await LoadUserListsContextAsync(userId);
+            var systemPrompt = BuildSystemPrompt(isGoogleConnected, taskContext, listsContext);
 
             var history = await _db.AiConversationHistory
                 .Where(h => h.UserId == userId)
@@ -70,6 +76,8 @@ namespace Tasky.Infrastructure.ExternalServices
 
                 if (chatResponse.Intent == "sync_google" || chatResponse.Intent == "disconnect_google")
                     chatResponse = await HandleCalendarIntentAsync(userId, chatResponse.Intent, chatResponse.Reply, isGoogleConnected);
+                else if (chatResponse.Intent == "query_tasks")
+                    chatResponse = await ExecuteTaskQueryAsync(userId, chatResponse.PendingQuery ?? new PendingQueryDto(), chatResponse.Reply);
 
                 await SaveMessagesAsync(userId, message, chatResponse.Reply);
                 return chatResponse;
@@ -101,47 +109,31 @@ namespace Tasky.Infrastructure.ExternalServices
             return new AiChatResponse { Reply = reply, Intent = intent };
         }
 
-        private static string BuildSystemPrompt(bool isGoogleConnected, string taskContext) => $$"""
-            Ты TaskyAI — ИИ-планировщик задач.
-            Текущая дата и время: {{DateTime.UtcNow:yyyy-MM-dd HH:mm}} UTC. Часовой пояс пользователя: GMT+3.
-            Google Calendar: {{(isGoogleConnected ? "подключён" : "не подключён")}}.
-            Задачи пользователя: {{taskContext}}
+        private static string BuildSystemPrompt(bool isGoogleConnected, string taskContext, string listsContext)
+        {
+            var localNow = DateTime.UtcNow.AddHours(3);
+            var today    = localNow.Date;
+            var tomorrow = today.AddDays(1);
+            var weekEnd  = today.AddDays(6);
 
-            ВСЕГДА отвечай строго в формате JSON (без markdown, без ```json):
-            {
-              "reply": "текст ответа пользователю",
-              "intent": null | "create_task" | "update_task" | "delete_task" | "sync_google" | "disconnect_google",
-              "pendingTask": null | {
-                "title": "string",
-                "description": "string | null",
-                "startAt": "ISO8601 | null",
-                "endAt": "ISO8601 | null",
-                "isAllDay": true | false,
-                "priority": "Low | Medium | High"
-              },
-              "pendingUpdate": null | {
-                "taskId": 123,
-                "title": "string | null",
-                "description": "string | null",
-                "startAt": "ISO8601 | null",
-                "endAt": "ISO8601 | null",
-                "isAllDay": true | false | null,
-                "status": "InProgress | Completed | null"
-              },
-              "pendingDelete": null | {
-                "taskId": 123,
-                "taskTitle": "string"
-              }
-            }
+            return $$"""
+            TaskyAI — task planner. DateTime: {{localNow:yyyy-MM-dd HH:mm}} GMT+3. Google Calendar: {{(isGoogleConnected ? "connected" : "not connected")}}.
+            Lists: {{listsContext}}
+            Tasks (format ID:name@MM-dd HH:mm): {{taskContext}}
 
-            Правила:
-            - startAt/endAt: ISO 8601. Только дата → "2026-03-20". С временем → "2026-03-20T17:00:00Z" (учитывай GMT+3 → UTC).
-            - isAllDay = true если задача на весь день без конкретного времени.
-            - priority: "Low" по умолчанию, если пользователь не указал.
-            - Никогда не говори «я добавил/изменил/удалил» — только предлагай и жди подтверждения.
-            - intent = null если это просто вопрос или разговор без действия.
-            - Отвечай кратко и по-русски.
+            Reply ONLY with valid JSON, no markdown:
+            {"reply":"...","intent":null|"create_task"|"update_task"|"query_tasks"|"sync_google"|"disconnect_google","pendingTask":{"title":"","description":null,"startAt":null,"endAt":null,"isAllDay":false,"priority":"Low","listName":null}|null,"pendingUpdate":{"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null}|null,"pendingQuery":{"dateFrom":null,"dateTo":null,"listName":null,"priority":null,"status":null}|null}
+
+            Rules:
+            - intent=null: plain conversation, no action.
+            - create_task: startAt/endAt=ISO8601 UTC(GMT+3-3h), isAllDay=true if no specific time, priority="Low" default, listName=exact name from Lists or null. reply=ask user to confirm (in Russian).
+            - update_task: find task by name in context→use its ID. Not found/ambiguous→intent=null, ask clarification. Set ONLY changed fields(rest=null). status:"Completed"/"InProgress"/null. reply=describe changes+ask to confirm (in Russian).
+            - Delete task: refuse — "К сожалению, я не могу удалить задачу в целях безопасности. Удалить можно вручную в приложении." intent=null.
+            - query_tasks: reply=short header ONLY (task list appended by system). pendingQuery REQUIRED (never null). dateFrom/dateTo=GMT+3 no suffix, system converts to UTC.
+              Preset dates: today="{{today:yyyy-MM-dd}}T00:00:00".."{{today:yyyy-MM-dd}}T23:59:59", tomorrow="{{tomorrow:yyyy-MM-dd}}T00:00:00".."{{tomorrow:yyyy-MM-dd}}T23:59:59", week="{{today:yyyy-MM-dd}}T00:00:00".."{{weekEnd:yyyy-MM-dd}}T23:59:59". listName=exact from Lists|null. status:"Completed"/"InProgress"/null(all).
+            - Never say "I added/changed" — propose and wait for confirmation. ALWAYS reply to user in Russian, concisely.
             """;
+        }
 
         private static IEnumerable<object> BuildMessages(
             IEnumerable<AiConversationHistory> history,
@@ -190,11 +182,13 @@ namespace Tasky.Infrastructure.ExternalServices
                 && puEl.ValueKind == JsonValueKind.Object)
                 pendingUpdate = ParsePendingUpdate(puEl);
 
-            PendingDeleteDto? pendingDelete = null;
-            if (intent == "delete_task"
-                && root.TryGetProperty("pendingDelete", out var pdEl)
-                && pdEl.ValueKind == JsonValueKind.Object)
-                pendingDelete = ParsePendingDelete(pdEl);
+
+
+            PendingQueryDto? pendingQuery = null;
+            if (intent == "query_tasks"
+                && root.TryGetProperty("pendingQuery", out var pqEl)
+                && pqEl.ValueKind == JsonValueKind.Object)
+                pendingQuery = ParsePendingQuery(pqEl);
 
             return new AiChatResponse
             {
@@ -202,7 +196,7 @@ namespace Tasky.Infrastructure.ExternalServices
                 Intent = intent,
                 PendingTask = pendingTask,
                 PendingUpdate = pendingUpdate,
-                PendingDelete = pendingDelete
+                PendingQuery = pendingQuery
             };
         }
 
@@ -213,7 +207,8 @@ namespace Tasky.Infrastructure.ExternalServices
             StartAt = el.GetDateOrNull("startAt"),
             EndAt = el.GetDateOrNull("endAt"),
             IsAllDay = el.GetBoolOrDefault("isAllDay"),
-            Priority = el.GetStringOrEmpty("priority") is { Length: > 0 } p ? p : "Low"
+            Priority = el.GetStringOrEmpty("priority") is { Length: > 0 } p ? p : "Low",
+            ListName = el.GetStringOrNull("listName")
         };
 
         private static PendingUpdateDto ParsePendingUpdate(JsonElement el) => new()
@@ -231,11 +226,125 @@ namespace Tasky.Infrastructure.ExternalServices
                 : null
         };
 
-        private static PendingDeleteDto ParsePendingDelete(JsonElement el) => new()
+
+
+        private static PendingQueryDto ParsePendingQuery(JsonElement el) => new()
         {
-            TaskId = el.TryGetProperty("taskId", out var idEl) ? idEl.GetInt32() : 0,
-            TaskTitle = el.GetStringOrEmpty("taskTitle")
+            DateFrom = el.GetLocalDateOrNull("dateFrom"),
+            DateTo = el.GetLocalDateOrNull("dateTo"),
+            ListName = el.GetStringOrNull("listName"),
+            Priority = el.GetStringOrNull("priority"),
+            Status = el.GetStringOrNull("status")
         };
+
+        private async Task<AiChatResponse> ExecuteTaskQueryAsync(int userId, PendingQueryDto query, string aiHeader)
+        {
+            var q = _db.Tasks
+                .Include(t => t.List)
+                .Where(t => t.UserId == userId);
+
+            // Status filter: null = все статусы
+            if (query.Status == "Completed")
+                q = q.Where(t => t.Status == TaskCompletionStatus.Completed);
+            else if (query.Status == "InProgress")
+                q = q.Where(t => t.Status == TaskCompletionStatus.InProgress);
+
+            // Date range: даты из AI в GMT+3 — конвертируем в UTC вычитая 3 часа
+            if (query.DateFrom.HasValue || query.DateTo.HasValue)
+            {
+                var dateFromUtc = query.DateFrom.HasValue
+                    ? DateTime.SpecifyKind(query.DateFrom.Value.AddHours(-3), DateTimeKind.Utc)
+                    : (DateTime?)null;
+                var dateToUtc = query.DateTo.HasValue
+                    ? DateTime.SpecifyKind(query.DateTo.Value.AddHours(-3), DateTimeKind.Utc)
+                    : (DateTime?)null;
+
+                q = q.Where(t => t.StartAt != null);
+                if (dateFromUtc.HasValue)
+                    q = q.Where(t => t.StartAt >= dateFromUtc);
+                if (dateToUtc.HasValue)
+                    q = q.Where(t => t.StartAt <= dateToUtc);
+            }
+
+            // List filter: ищем список по названию
+            if (!string.IsNullOrEmpty(query.ListName))
+            {
+                var matchingListId = await ResolveListIdAsync(userId, query.ListName);
+
+                if (matchingListId is null)
+                    return new AiChatResponse
+                    {
+                        Reply = $"Список «{query.ListName}» не найден.",
+                        Intent = "query_tasks"
+                    };
+
+                q = q.Where(t => t.ListId == matchingListId);
+            }
+
+            // Priority filter
+            if (!string.IsNullOrEmpty(query.Priority)
+                && Enum.TryParse<TaskPriority>(query.Priority, ignoreCase: true, out var priority))
+                q = q.Where(t => t.Priority == priority);
+
+            var total = await q.CountAsync();
+
+            if (total == 0)
+                return new AiChatResponse
+                {
+                    Reply = "По вашему запросу задач не найдено.",
+                    Intent = "query_tasks"
+                };
+
+            var tasks = await q
+                .OrderBy(t => t.StartAt == null ? 1 : 0)
+                .ThenBy(t => t.StartAt)
+                .ThenByDescending(t => t.CreatedAt)
+                .Take(QueryTasksMaxDisplay)
+                .Select(t => new
+                {
+                    t.Title,
+                    t.StartAt,
+                    t.IsAllDay,
+                    ListName = t.List != null ? t.List.Name : (string?)null
+                })
+                .ToListAsync();
+
+            var taskLines = tasks.Select(t =>
+            {
+                var parts = new List<string> { $"• {t.Title}" };
+
+                if (t.StartAt.HasValue)
+                {
+                    var localTime = t.StartAt.Value.AddHours(3);
+                    parts.Add(t.IsAllDay
+                        ? localTime.ToString("dd.MM.yyyy")
+                        : localTime.ToString("dd.MM.yyyy HH:mm"));
+                }
+
+                if (!string.IsNullOrEmpty(t.ListName))
+                    parts.Add($"[{t.ListName}]");
+
+                return string.Join(" — ", parts);
+            });
+
+            var sb = new StringBuilder();
+            sb.AppendLine(aiHeader);
+            sb.AppendLine();
+            sb.AppendJoin("\n", taskLines);
+
+            if (total > QueryTasksMaxDisplay)
+            {
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.Append($"...и ещё {total - QueryTasksMaxDisplay}. Посмотреть все можно в соответствующих списках.");
+            }
+
+            return new AiChatResponse
+            {
+                Reply = sb.ToString().Trim(),
+                Intent = "query_tasks"
+            };
+        }
 
         public async Task<int> ConfirmTaskAsync(int userId, PendingTaskDto pending)
         {
@@ -258,6 +367,8 @@ namespace Tasky.Infrastructure.ExternalServices
                 endAt = pending.EndAt ?? startAt?.AddMinutes(60);
             }
 
+            var listId = await ResolveListIdAsync(userId, pending.ListName);
+
             var task = new TaskItem
             {
                 UserId = userId,
@@ -268,6 +379,7 @@ namespace Tasky.Infrastructure.ExternalServices
                 IsAllDay = pending.IsAllDay,
                 StartAt = startAt,
                 EndAt = endAt,
+                ListId = listId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -369,20 +481,59 @@ namespace Tasky.Infrastructure.ExternalServices
             return true;
         }
 
+        private async Task<int?> ResolveListIdAsync(int userId, string? listName)
+        {
+            if (string.IsNullOrWhiteSpace(listName)) return null;
+
+            var lists = await _db.Lists
+                .Where(l => l.UserId == userId)
+                .Select(l => new { l.Id, Name = l.Name })
+                .ToListAsync();
+
+            var searchLower = listName.ToLower();
+
+            // 1. Exact match (case-insensitive)
+            var match = lists.FirstOrDefault(l => l.Name.ToLower() == searchLower);
+            if (match is not null) return match.Id;
+
+            // 2. User's phrase contains the list name: "рабочий список" → "Рабочий"
+            match = lists.FirstOrDefault(l => searchLower.Contains(l.Name.ToLower()));
+            if (match is not null) return match.Id;
+
+            // 3. List name contains user's word: "рабочий" → "Рабочий проект"
+            match = lists.FirstOrDefault(l => l.Name.ToLower().Contains(searchLower));
+            return match?.Id;
+        }
+
+        private async Task<string> LoadUserListsContextAsync(int userId)
+        {
+            var names = await _db.Lists
+                .Where(l => l.UserId == userId)
+                .Select(l => l.Name)
+                .ToListAsync();
+
+            return names.Count == 0 ? "(нет)" : string.Join(", ", names.Select(n => $"«{n}»"));
+        }
+
         private async Task<string> LoadUserTasksContextAsync(int userId)
         {
+            var upcomingCutoff = DateTime.UtcNow.AddDays(TasksUpcomingDays);
+
             var tasks = await _db.Tasks
-                .Where(t => t.UserId == userId && t.Status == TaskCompletionStatus.InProgress)
-                .OrderByDescending(t => t.CreatedAt)
-                .Take(30)
+                .Where(t => t.UserId == userId
+                    && t.Status == TaskCompletionStatus.InProgress
+                    && t.StartAt != null
+                    && t.StartAt <= upcomingCutoff)
+                .OrderBy(t => t.StartAt)
+                .Take(TasksMaxCount)
                 .Select(t => new { t.Id, t.Title, t.StartAt })
                 .ToListAsync();
 
             if (tasks.Count == 0)
-                return "(задач нет)";
+                return "(нет)";
 
-            return string.Join("\n", tasks.Select(t =>
-                $"- ID:{t.Id} «{t.Title}»" + (t.StartAt.HasValue ? $" ({t.StartAt.Value:yyyy-MM-dd HH:mm})" : "")));
+            return string.Join(";", tasks.Select(t =>
+                $"{t.Id}:{t.Title}@{t.StartAt!.Value:MM-dd HH:mm}"));
         }
 
         private async Task SaveMessagesAsync(int userId, string userMsg, string assistantMsg)
@@ -423,6 +574,28 @@ namespace Tasky.Infrastructure.ExternalServices
             return DateTime.TryParse(s, null,
                     System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
                 ? dt.ToUniversalTime()
+                : null;
+        }
+
+        /// <summary>
+        /// Парсит дату как локальное время (GMT+3) без конвертации в UTC.
+        /// Конвертацию выполняет сервис явным вычитанием 3 часов.
+        /// </summary>
+        public static DateTime? GetLocalDateOrNull(this JsonElement el, string key)
+        {
+            var s = el.GetStringOrNull(key);
+            if (s is null) return null;
+
+            if (s.Length == 10 && DateTime.TryParseExact(
+                    s, "yyyy-MM-dd", null,
+                    System.Globalization.DateTimeStyles.None,
+                    out var dateOnly))
+                return DateTime.SpecifyKind(dateOnly, DateTimeKind.Unspecified);
+
+            return DateTime.TryParse(s, null,
+                    System.Globalization.DateTimeStyles.None,
+                    out var dt)
+                ? DateTime.SpecifyKind(dt, DateTimeKind.Unspecified)
                 : null;
         }
     }

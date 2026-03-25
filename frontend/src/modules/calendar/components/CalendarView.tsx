@@ -8,6 +8,7 @@ import { Button } from "@shared/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { BigCalendar } from "@modules/calendar/components/BigCalendar";
 import { useCalendarView } from "../hooks/useCalendarView";
+import { useAiAssistant } from "@modules/ai-assistant/hooks/useAiAssistant";
 
 export function CalendarView() {
 	const [view, setView] = useState<View>(Views.WEEK);
@@ -26,9 +27,11 @@ export function CalendarView() {
 		handleAddTask,
 	} = useCalendarView(view);
 
+	const { onOpenAssistantChat, isAssistantChatOpen } = useAiAssistant();
+
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="flex items-start justify-between">
+		<div className="flex flex-col gap-4 h-full overflow-hidden">
+			<div className="flex items-start justify-between shrink-0">
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center gap-1">
 						<Button variant="ghost" className="w-[40px]! h-[40px]!" onClick={handlePrevious}>
@@ -54,29 +57,38 @@ export function CalendarView() {
 							<TabsTrigger value={Views.MONTH}>Месяц</TabsTrigger>
 						</TabsList>
 					</Tabs>
-					<Button
-						variant="default"
-						className="gap-2 text-accent-foreground"
+					<div
+						className="overflow-hidden transition-all duration-200 ease-in-out"
 						style={{
-							background: "linear-gradient(135deg, #D8EEC7 0%, #F4E6D4 100%)",
+							width: isAssistantChatOpen ? 0 : "200px",
+							opacity: isAssistantChatOpen ? 0 : 1,
 						}}
 					>
-						<Sparkles className="size-[24px]" strokeWidth={1} />
-						ИИ-ассистент
-					</Button>
+						<Button
+							variant="default"
+							className="gap-2 text-accent-foreground whitespace-nowrap"
+							style={{ background: "linear-gradient(135deg, #D8EEC7 0%, #F4E6D4 100%)" }}
+							onClick={onOpenAssistantChat}
+						>
+							<Sparkles className="size-[24px]" strokeWidth={1} />
+							ИИ-ассистент
+						</Button>
+					</div>
 				</div>
 			</div>
 
-			<BigCalendar
-				events={events}
-				date={date}
-				view={view}
-				onNavigate={handleNavigate}
-				onSelectSlot={handleSelectSlot}
-				onSelectEvent={handleSelectEvent}
-				onEventDrop={handleEventDrop}
-				onEventResize={handleEventResize}
-			/>
+			<div className="flex-1 min-h-0">
+				<BigCalendar
+					events={events}
+					date={date}
+					view={view}
+					onNavigate={handleNavigate}
+					onSelectSlot={handleSelectSlot}
+					onSelectEvent={handleSelectEvent}
+					onEventDrop={handleEventDrop}
+					onEventResize={handleEventResize}
+				/>
+			</div>
 		</div>
 	);
 }

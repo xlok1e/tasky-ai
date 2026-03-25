@@ -56,16 +56,19 @@ interface CalendarEventProps {
 
 function CalendarEventContent({ event }: CalendarEventProps) {
 	const task = event.resource;
-	const timeStr = !event.allDay
-		? `${format(event.start, "HH:mm")} — ${format(event.end, "HH:mm")}`
-		: null;
+	const durationMs = event.end.getTime() - event.start.getTime();
+	const isTall = durationMs >= 45 * 60 * 1000; // 45 min ≈ 60px (80px/hour from CSS)
+	const timeStr =
+		!event.allDay && isTall
+			? `${format(event.start, "HH:mm")} — ${format(event.end, "HH:mm")}`
+			: null;
 
 	return (
 		<div className="calendar-event-inner">
 			<p className="calendar-event-title">{task.title}</p>
 			{timeStr && (
 				<div className="calendar-event-time">
-					<Clock size={10} strokeWidth={2} />
+					<Clock size={10} strokeWidth={2} className="shrink-0" />
 					<span>{timeStr}</span>
 				</div>
 			)}
@@ -105,7 +108,19 @@ export function BigCalendar({
 			style.color = getContrastColor(colorHex);
 		}
 
-		const className = event.resource.isCompleted ? "event-completed" : "event-variant-primary";
+		style.backgroundColor = hexToRgba("#809671", 0.7);
+		style.color = getContrastColor("#809671");
+
+		const durationMs = event.end.getTime() - event.start.getTime();
+		const isCompact = durationMs <= 15 * 60 * 1000;
+
+		const className = [
+			event.resource.isCompleted ? "event-completed" : "event-variant-primary",
+			isCompact ? "event-compact" : null,
+		]
+			.filter(Boolean)
+			.join(" ");
+
 		return { style, className };
 	}, []);
 
@@ -129,7 +144,7 @@ export function BigCalendar({
 			localizer={localizer}
 			culture="ru"
 			messages={MESSAGES}
-			style={{ height: 900, width: "100%" }}
+			style={{ height: "100%", width: "100%" }}
 			className="border border-border rounded-lg"
 			defaultView={Views.WEEK}
 			view={view}
@@ -147,8 +162,8 @@ export function BigCalendar({
 			onEventDrop={onEventDrop}
 			onEventResize={onEventResize}
 			toolbar={false}
-			step={15}
-			timeslots={4}
+			step={5}
+			timeslots={12}
 			components={components}
 		/>
 	);

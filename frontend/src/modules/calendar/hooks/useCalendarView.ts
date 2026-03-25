@@ -10,6 +10,8 @@ import { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop"
 import { CalendarTaskEvent } from "../components/BigCalendar";
 import { deriveAllDay, clampToSingleDay } from "../utils/calendar.utils";
 
+const MIN_EVENT_DURATION_MS = 15 * 60 * 1000;
+
 export function useCalendarView(view: View) {
 	const [date, setDate] = useState(new Date());
 	const tasks = useTasksStore((s) => s.tasks);
@@ -103,6 +105,9 @@ export function useCalendarView(view: View) {
 		({ event, start, end, isAllDay }: EventInteractionArgs<CalendarTaskEvent>) => {
 			const nextStart = new Date(start);
 			const nextEnd = new Date(end);
+
+			if (nextEnd.getTime() - nextStart.getTime() < MIN_EVENT_DURATION_MS) return;
+
 			const nextAllDay = deriveAllDay(nextStart, nextEnd, isAllDay, event.allDay);
 
 			updateTask(event.resource.id, {

@@ -10,6 +10,10 @@ import { useTasksStore } from "@modules/tasks/store/tasks.store";
 import { useGoogleStore } from "@/domains/google/store/google.store";
 import { TaskPriority } from "@modules/tasks/types/task.types";
 import type { Task } from "@modules/tasks/types/task.types";
+<<<<<<< Updated upstream
+=======
+import { formatDateRange } from "../utils/ai-assistsnt-utils";
+>>>>>>> Stashed changes
 
 interface AiAssistantState {
 	messages: ChatMessage[];
@@ -17,6 +21,10 @@ interface AiAssistantState {
 	sendMessage: (text: string) => Promise<void>;
 	confirmTask: (messageId: string, task: PendingTask) => Promise<void>;
 	rejectTask: (messageId: string) => void;
+
+	isAssistantChatOpen: boolean;
+	onCloseAssistantChat: () => void;
+	onOpenAssistantChat: () => void;
 }
 
 function generateId(): string {
@@ -35,7 +43,6 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 		listId: null,
 		title: task.title,
 		description: task.description,
-		deadline: task.endAt ? new Date(task.endAt) : null,
 		isCompleted: false,
 		isAllDay: task.isAllDay,
 		startDate: task.startAt ? new Date(task.startAt) : null,
@@ -44,9 +51,27 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 	};
 }
 
+const buildAssistantReply = (reply: string, pendingTask?: PendingTask | null): ChatMessage => {
+	let content = reply;
+
+	if (pendingTask) {
+		content += `\n\nЗадача: \nНазвание: ${pendingTask.title}\nОписание: ${pendingTask.description ?? "—"}\nПриоритет: ${pendingTask.priority}\nДата исполнения: ${formatDateRange(pendingTask.startAt, pendingTask.endAt, pendingTask.isAllDay)}\nСписок: ${pendingTask.listId ?? "—"}\n`;
+	}
+
+	return {
+		id: generateId(),
+		role: ChatRole.Assistant,
+		content: content,
+		pendingTask: pendingTask ?? null,
+	};
+};
+
 export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 	messages: [],
 	isLoading: false,
+	isAssistantChatOpen: false,
+	onCloseAssistantChat: () => set({ isAssistantChatOpen: false }),
+	onOpenAssistantChat: () => set({ isAssistantChatOpen: true }),
 
 	sendMessage: async (text: string) => {
 		const trimmed = text.trim();
@@ -62,12 +87,7 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 
 		try {
 			const response = await apiSendMessage(trimmed);
-			const assistantMessage: ChatMessage = {
-				id: generateId(),
-				role: ChatRole.Assistant,
-				content: response.reply,
-				pendingTask: response.pendingTask ?? null,
-			};
+			const assistantMessage = buildAssistantReply(response.reply, response.pendingTask);
 			set((state) => ({
 				messages: [...state.messages, assistantMessage],
 				isLoading: false,

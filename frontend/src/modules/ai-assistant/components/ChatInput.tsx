@@ -4,9 +4,10 @@ import { useState, useRef, useEffect, type KeyboardEvent } from "react";
 import { Button } from "@shared/ui/button";
 import { Textarea } from "@shared/ui/textarea";
 import { Spinner } from "@shared/ui/spinner";
-import { SendHorizonal } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
 
-const MAX_TEXTAREA_HEIGHT = 350;
+const MAX_TEXTAREA_HEIGHT = 200;
+const MIN_TEXTAREA_HEIGHT = 38;
 
 interface ChatInputProps {
 	onSend: (text: string) => void;
@@ -44,25 +45,48 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
 	};
 
 	return (
-		<div className="flex items-end gap-2 border-t pt-3">
-			<Textarea
-				ref={textareaRef}
-				value={value}
-				onChange={(e) => setValue(e.target.value)}
-				onKeyDown={handleKeyDown}
-				placeholder="Написать сообщение…"
-				disabled={isLoading}
-				rows={1}
-				className="resize-none leading-snug overflow-y-auto"
-				style={{ minHeight: "38px", maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
-			/>
+		<div className="flex items-end gap-2">
+			<div className="flex flex-col items-start">
+				{isLoading && (
+					<span
+						className="inline-block mb-2 text-sm select-none"
+						style={{
+							background:
+								"linear-gradient(90deg, var(--primary) 0%, var(--primary) 35%, rgba(255,255,255,0.95) 50%, var(--primary) 65%, var(--primary) 100%)",
+							backgroundSize: "200% 100%",
+							WebkitBackgroundClip: "text",
+							WebkitTextFillColor: "transparent",
+							backgroundClip: "text",
+							animation: "text-shimmer 2s linear infinite",
+						}}
+					>
+						Готовлю ответ
+						<span style={{ opacity: 0, animation: "dot1-fade 2s ease-in-out infinite" }}>.</span>
+						<span style={{ opacity: 0, animation: "dot2-fade 2s ease-in-out infinite" }}>.</span>
+						<span style={{ opacity: 0, animation: "dot3-fade 2s ease-in-out infinite" }}>.</span>
+					</span>
+				)}
+				<Textarea
+					ref={textareaRef}
+					value={value}
+					onChange={(e) => setValue(e.target.value)}
+					onKeyDown={handleKeyDown}
+					placeholder="Написать сообщение..."
+					disabled={isLoading}
+					rows={1}
+					className="resize-none overflow-y-auto rounded-lg border border-border bg-background px-3 py-2 leading-snug shadow-none"
+					style={{ minHeight: `${MIN_TEXTAREA_HEIGHT}px`, maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
+				/>
+			</div>
 			<Button
+				type="button"
 				size="icon"
 				onClick={handleSend}
 				disabled={isLoading || !value.trim()}
-				className="shrink-0 h-[38px] w-[38px]"
+				className="h-[38px] w-[38px] shrink-0 rounded-lg"
+				aria-label="Отправить сообщение"
 			>
-				{isLoading ? <Spinner className="h-4 w-4" /> : <SendHorizonal size={16} />}
+				{isLoading ? <Spinner className="h-4 w-4" /> : <SendHorizontal size={16} />}
 			</Button>
 		</div>
 	);

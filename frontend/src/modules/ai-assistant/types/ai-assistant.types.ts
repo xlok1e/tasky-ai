@@ -1,3 +1,6 @@
+import { RefObject } from "react";
+import type { ChatMessage as ChatMessageType } from "../types/ai-assistant.types";
+
 export enum ChatRole {
 	User = "user",
 	Assistant = "assistant",
@@ -10,6 +13,7 @@ export interface PendingTask {
 	startAt: string | null;
 	endAt: string | null;
 	isAllDay: boolean;
+	listId: string | null;
 }
 
 export interface ChatMessage {
@@ -32,4 +36,17 @@ export interface ChatResponse {
 
 export interface ConfirmTaskRequest {
 	task: PendingTask;
+}
+
+export interface AiAssistantMessagesProps {
+	isLoading: boolean;
+	bottomRef: RefObject<HTMLDivElement | null>;
+	onConfirmTask: (messageId: string, task: PendingTask) => void;
+	onRejectTask: (messageId: string) => void;
+}
+
+export interface ChatMessageProps {
+	message: ChatMessageType;
+	onConfirm: () => void;
+	onReject: () => void;
 }

@@ -1,14 +1,29 @@
-import { Bot } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
 import { AiAssistantPanel } from "@modules/ai-assistant";
+import { useAiAssistant } from "@modules/ai-assistant/hooks/useAiAssistant";
 
 export function RightSidebar() {
+	const { isAssistantChatOpen } = useAiAssistant();
+	const [mounted, setMounted] = useState(false);
+
+	useEffect(() => {
+		setMounted(true);
+	}, []);
+
 	return (
-		<aside className="flex h-screen w-72 flex-col border-l bg-background shrink-0">
-			<div className="flex items-center gap-2 border-b px-4 py-3">
-				<Bot size={18} className="text-muted-foreground" />
-				<span className="text-sm font-semibold tracking-tight">AI Ассистент</span>
-			</div>
-			<div className="flex-1 overflow-hidden">
+		<aside
+			style={{
+				width: isAssistantChatOpen ? 343 : 0,
+				minWidth: 0,
+				overflow: "hidden",
+				flexShrink: 0,
+				transition: mounted ? "width 150ms ease-in-out" : "none",
+			}}
+			className="h-screen bg-background"
+		>
+			<div className="w-[343px] h-full border-l border-border">
 				<AiAssistantPanel />
 			</div>
 		</aside>

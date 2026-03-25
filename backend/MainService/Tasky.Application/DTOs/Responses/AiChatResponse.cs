@@ -7,4 +7,5 @@ public sealed class AiChatResponse
     public PendingTaskDto? PendingTask { get; init; }
     public PendingUpdateDto? PendingUpdate { get; init; }
     public PendingDeleteDto? PendingDelete { get; init; }
+    public PendingQueryDto? PendingQuery { get; init; }
 }

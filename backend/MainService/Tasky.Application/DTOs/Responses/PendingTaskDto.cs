@@ -8,4 +8,5 @@ public sealed class PendingTaskDto
     public DateTime? StartAt { get; init; }
     public DateTime? EndAt { get; init; }
     public bool IsAllDay { get; init; }
+    public string? ListName { get; init; }
 }

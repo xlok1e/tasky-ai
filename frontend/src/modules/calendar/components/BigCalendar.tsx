@@ -106,10 +106,10 @@ export function BigCalendar({
 		if (colorHex) {
 			style.backgroundColor = hexToRgba(colorHex, 0.5);
 			style.color = getContrastColor(colorHex);
+		} else {
+			style.backgroundColor = hexToRgba("#809671", 0.7);
+			style.color = getContrastColor("#809671");
 		}
-
-		style.backgroundColor = hexToRgba("#809671", 0.7);
-		style.color = getContrastColor("#809671");
 
 		const durationMs = event.end.getTime() - event.start.getTime();
 		const isCompact = durationMs <= 15 * 60 * 1000;

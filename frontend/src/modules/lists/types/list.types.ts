@@ -1,4 +1,4 @@
-import type { TaskResponse } from "@modules/tasks/types/task.types";
+import type { TaskResponse } from "@modules/tasks/types/task.api.types";
 
 /** Mirrors backend ListResponse DTO */
 export interface ListResponse {

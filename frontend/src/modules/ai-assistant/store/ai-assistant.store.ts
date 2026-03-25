@@ -8,9 +8,8 @@ import { ChatRole } from "../types/ai-assistant.types";
 import type { ChatMessage, PendingTask } from "../types/ai-assistant.types";
 import { useTasksStore } from "@modules/tasks/store/tasks.store";
 import { useGoogleStore } from "@/domains/google/store/google.store";
-import { TaskPriority } from "@modules/tasks/types/task.types";
+import { TaskPriority } from "@modules/tasks/types/task.enums";
 import type { Task } from "@modules/tasks/types/task.types";
-
 interface AiAssistantState {
 	messages: ChatMessage[];
 	isLoading: boolean;
@@ -87,9 +86,7 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 
 		// Mark as confirming
 		set((state) => ({
-			messages: state.messages.map((m) =>
-				m.id === messageId ? { ...m, isConfirming: true } : m,
-			),
+			messages: state.messages.map((m) => (m.id === messageId ? { ...m, isConfirming: true } : m)),
 		}));
 
 		tasksStore._addOptimisticTask(optimisticTask);

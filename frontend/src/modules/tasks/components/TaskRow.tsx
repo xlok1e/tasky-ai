@@ -3,11 +3,8 @@
 import { Checkbox } from "@shared/ui/checkbox";
 import { useTasksStore } from "../store/tasks.store";
 import { useTaskModal } from "../store/task-modal.store";
-import type { Task } from "../types/task.types";
-
-interface TaskRowProps {
-	task: Task;
-}
+import type { TaskRowProps } from "../types/task.types";
+import { formatTaskDate } from "../utils/tasks.utils";
 
 export function TaskRow({ task }: TaskRowProps) {
 	const toggleTask = useTasksStore((s) => s.toggleTask);
@@ -23,16 +20,19 @@ export function TaskRow({ task }: TaskRowProps) {
 			role="button"
 			tabIndex={0}
 			onClick={() => openEdit(task)}
-			onKeyDown={(e) => e.key === "Enter" && openEdit(task)}
-			className="flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 transition-colors hover:bg-accent/30"
+			className="flex h-7 w-full items-center justify-between gap-[18px] rounded-[6px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 cursor-pointer hover:bg-accent/50 py-4.5 px-4 duration-100"
 		>
-			<div onClick={handleCheckedChange}>
-				<Checkbox id={`task-${task.id}`} checked={task.isCompleted} />
+			<div className="flex min-w-0 items-center gap-2">
+				<Checkbox
+					checked={task.isCompleted}
+					onClick={handleCheckedChange}
+					className="size-6 rounded-[4px] border-border bg-card text-primary shadow-none [&_svg]:size-[18px] cursor-pointer"
+					aria-label={`Отметить задачу ${task.title}`}
+				/>
+				<span className="truncate text-base leading-7 text-foreground">{task.title}</span>
 			</div>
-			<span
-				className={`flex-1 text-sm ${task.isCompleted ? "text-muted-foreground line-through" : ""}`}
-			>
-				{task.title}
+			<span className="text-muted-foreground w-[255px] shrink-0 text-right text-base leading-7">
+				{formatTaskDate(task)}
 			</span>
 		</div>
 	);

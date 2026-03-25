@@ -36,7 +36,6 @@
 	--sidebar-accent-foreground: oklch(0.2257 0.0211 18.8449);
 	--sidebar-border: oklch(0.8726 0.0407 75.7582);
 	--sidebar-ring: oklch(0.8726 0.0407 75.7582);
-	--font-sans: var(--font-line-seed-jp), ui-sans-serif, sans-serif;
 	--radius: 0.625rem;
 	--shadow-x: 0;
 	--shadow-y: 1px;
@@ -141,9 +140,8 @@
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
 
-	--font-sans: var(--font-sans);
-	--font-mono: var(--font-mono);
-	--font-serif: var(--font-serif);
+	--font-sans: var(--font-line-seed-jp), ui-sans-serif, sans-serif;
+	--font-mono: var(--font-line-seed-jp), ui-monospace, monospace;
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
@@ -164,6 +162,6 @@
 		@apply border-border outline-ring/50;
 	}
 	body {
-		@apply bg-background text-foreground;
+		@apply bg-background text-foreground font-sans;
 	}
 }

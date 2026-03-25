@@ -26,7 +26,7 @@ export default function RootLayout({
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<body
-				className={`${lineSeedJP.variable} antialiased bg-background`}
+				className={`${lineSeedJP.variable} font-sans antialiased bg-background`}
 				suppressHydrationWarning={true}
 			>
 				<Providers>

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,23 +8,26 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 using Tasky.Domain.Entities;
 using Tasky.Infrastructure.Persistence;
 
 namespace Tasky.Infrastructure.Services;
 
+internal sealed record PendingOperation(string Type, AiChatResponse Response);
+
 public class TelegramBotService(
     ITelegramBotClient botClient,
     IServiceScopeFactory scopeFactory,
-    ILogger<TelegramBotService> logger,
-    IAiAssistantService aiAssistantService) : BackgroundService
+    ILogger<TelegramBotService> logger) : BackgroundService
 {
+    private readonly ConcurrentDictionary<long, PendingOperation> _pendingOperations = new();
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var receiverOptions = new ReceiverOptions
         {
-            AllowedUpdates = [UpdateType.Message]
+            AllowedUpdates = [UpdateType.Message, UpdateType.CallbackQuery]
         };
 
         botClient.StartReceiving(
@@ -39,6 +43,12 @@ public class TelegramBotService(
 
     private async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
     {
+        if (update.CallbackQuery is { } callbackQuery)
+        {
+            await HandleCallbackQueryAsync(bot, callbackQuery, ct);
+            return;
+        }
+
         if (update.Message is not { } message) return;
 
         var chatId = message.Chat.Id;
@@ -227,7 +237,9 @@ public class TelegramBotService(
                 return;
             }
 
-            var transcribedText = await aiAssistantService.TranscribeAudioAsync(audioStream, $"voice_{voice.FileId}.ogg");
+            using var transcribeScope = scopeFactory.CreateScope();
+            var transcribeAiService = transcribeScope.ServiceProvider.GetRequiredService<IAiAssistantService>();
+            var transcribedText = await transcribeAiService.TranscribeAudioAsync(audioStream, $"voice_{voice.FileId}.ogg");
 
             if (string.IsNullOrWhiteSpace(transcribedText))
             {
@@ -272,24 +284,45 @@ public class TelegramBotService(
 
     private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, Tasky.Domain.Entities.User user, CancellationToken ct)
     {
+        using var scope = scopeFactory.CreateScope();
+        var aiService = scope.ServiceProvider.GetRequiredService<IAiAssistantService>();
+
         try
         {
-            await bot.SendMessage(chatId,
-                "⏳ Обрабатываю ваше сообщение...",
-                cancellationToken: ct);
+            await bot.SendChatAction(chatId, ChatAction.Typing, cancellationToken: ct);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            var chatTask = aiAssistantService.ChatAsync(user.Id, userMessage);
+            var chatTask = aiService.ChatAsync(user.Id, userMessage);
             if (await Task.WhenAny(chatTask, Task.Delay(Timeout.Infinite, timeoutCts.Token)) != chatTask)
                 throw new OperationCanceledException("AI request timed out");
 
             var response = await chatTask;
 
-            await bot.SendMessage(chatId,
-                response.Reply,
-                cancellationToken: ct);
+            if (response.PendingTask is not null || response.PendingUpdate is not null || response.PendingDelete is not null)
+            {
+                var operationType = response.PendingTask is not null ? "task"
+                    : response.PendingUpdate is not null ? "update"
+                    : "delete";
+
+                _pendingOperations[chatId] = new PendingOperation(operationType, response);
+
+                var keyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("✅ Подтвердить", "confirm"),
+                        InlineKeyboardButton.WithCallbackData("❌ Отмена", "cancel")
+                    }
+                });
+
+                await bot.SendMessage(chatId, response.Reply, replyMarkup: keyboard, cancellationToken: ct);
+            }
+            else
+            {
+                await bot.SendMessage(chatId, response.Reply, cancellationToken: ct);
+            }
 
             logger.LogInformation("AI message processed successfully for user {UserId}", user.Id);
         }
@@ -297,14 +330,99 @@ public class TelegramBotService(
         {
             logger.LogWarning("AI assistant request timeout for user {UserId}", user.Id);
             await bot.SendMessage(chatId,
-                "Время ожидания истекло. Пожалуйста, попробуйте снова.",
+                "⏱️ Время ожидания истекло. Пожалуйста, попробуйте снова.",
                 cancellationToken: ct);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing AI message for user {UserId}: {ErrorMessage}", user.Id, ex.Message);
             await bot.SendMessage(chatId,
-                "Ошибка при обработке сообщения. Пожалуйста, попробуйте снова позже.",
+                "❌ Ошибка при обработке сообщения. Пожалуйста, попробуйте снова позже.",
+                cancellationToken: ct);
+        }
+    }
+
+    private async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callbackQuery, CancellationToken ct)
+    {
+        var data = callbackQuery.Data ?? string.Empty;
+        var chatId = callbackQuery.Message!.Chat.Id;
+        var messageId = callbackQuery.Message.MessageId;
+        var originalText = callbackQuery.Message.Text ?? string.Empty;
+
+        await bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
+
+        if (data == "cancel")
+        {
+            _pendingOperations.TryRemove(chatId, out _);
+            await bot.EditMessageText(chatId, messageId,
+                $"❌ Операция отменена\n\n{originalText}",
+                cancellationToken: ct);
+            return;
+        }
+
+        if (data != "confirm") return;
+
+        if (!_pendingOperations.TryRemove(chatId, out var pending))
+        {
+            await bot.EditMessageText(chatId, messageId,
+                $"⚠️ Операция устарела. Пожалуйста, повторите запрос.\n\n{originalText}",
+                cancellationToken: ct);
+            return;
+        }
+
+        var user = await FindUserByChatIdAsync(chatId, ct);
+        if (user is null)
+        {
+            await bot.EditMessageText(chatId, messageId,
+                $"❌ Вы не авторизованы.\n\n{originalText}",
+                cancellationToken: ct);
+            return;
+        }
+
+        using var scope = scopeFactory.CreateScope();
+        var aiService = scope.ServiceProvider.GetRequiredService<IAiAssistantService>();
+
+        await bot.SendChatAction(chatId, ChatAction.Typing, cancellationToken: ct);
+
+        try
+        {
+            string resultText;
+
+            if (pending.Type == "task" && pending.Response.PendingTask is not null)
+            {
+                await aiService.ConfirmTaskAsync(user.Id, pending.Response.PendingTask);
+                resultText = $"✅ Вы подтвердили действие\n\n{originalText}";
+                await aiService.SaveConfirmationToHistoryAsync(user.Id, "Да, подтверждаю", "Задача успешно создана.");
+            }
+            else if (pending.Type == "update" && pending.Response.PendingUpdate is not null)
+            {
+                await aiService.ConfirmUpdateAsync(user.Id, pending.Response.PendingUpdate);
+                resultText = $"✅ Вы подтвердили действие\n\n{originalText}";
+                await aiService.SaveConfirmationToHistoryAsync(user.Id, "Да, подтверждаю", "Задача успешно обновлена.");
+            }
+            else if (pending.Type == "delete" && pending.Response.PendingDelete is not null)
+            {
+                var deleted = await aiService.ConfirmDeleteAsync(user.Id, pending.Response.PendingDelete.TaskId);
+                resultText = deleted
+                    ? $"✅ Вы подтвердили действие\n\n{originalText}"
+                    : $"❌ Задача не найдена\n\n{originalText}";
+                if (deleted)
+                    await aiService.SaveConfirmationToHistoryAsync(user.Id, "Да, подтверждаю", "Задача успешно удалена.");
+            }
+            else
+            {
+                resultText = $"⚠️ Неизвестная операция\n\n{originalText}";
+            }
+
+            await bot.EditMessageText(chatId, messageId, resultText, cancellationToken: ct);
+
+            logger.LogInformation("Confirmed {Type} operation for user {UserId}", pending.Type, user.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error confirming {Type} for user {UserId}", pending.Type, user.Id);
+            await bot.EditMessageText(chatId, messageId,
+                $"❌ Ошибка при выполнении операции\n\n{originalText}",
                 cancellationToken: ct);
         }
     }

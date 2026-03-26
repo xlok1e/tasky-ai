@@ -134,6 +134,7 @@ namespace Tasky.Infrastructure.ExternalServices
             - query_tasks: reply=short header ONLY (task list appended by system). pendingQuery REQUIRED (never null). dateFrom/dateTo=GMT+3 no suffix, system converts to UTC.
               Preset dates: today="{{today:yyyy-MM-dd}}T00:00:00".."{{today:yyyy-MM-dd}}T23:59:59", tomorrow="{{tomorrow:yyyy-MM-dd}}T00:00:00".."{{tomorrow:yyyy-MM-dd}}T23:59:59", week="{{today:yyyy-MM-dd}}T00:00:00".."{{weekEnd:yyyy-MM-dd}}T23:59:59". listName=exact from Lists|null. status:"Completed"/"InProgress"/null(all).
             - Never say "I added/changed" — propose and wait for confirmation. ALWAYS reply to user in Russian, concisely.
+            - CRITICAL: The "reply" field MUST contain ONLY human-readable text. NEVER include raw data, table rows, tab-separated values, IDs, database records, or any structured data in "reply". If you need to reference a task, use only its name. The task list in context is for your internal use only.
             """;
         }
 
@@ -168,6 +169,8 @@ namespace Tasky.Infrastructure.ExternalServices
             var reply = root.TryGetProperty("reply", out var replyEl)
                 ? replyEl.GetString() ?? "Не удалось получить ответ."
                 : "Не удалось получить ответ.";
+
+            reply = SanitizeReply(reply);
 
             var intent = root.TryGetProperty("intent", out var intentEl) && intentEl.ValueKind != JsonValueKind.Null
                 ? intentEl.GetString()
@@ -211,6 +214,25 @@ namespace Tasky.Infrastructure.ExternalServices
                 PendingUpdate = pendingUpdate,
                 PendingQuery = pendingQuery
             };
+        }
+
+        private static string SanitizeReply(string reply)
+        {
+            if (string.IsNullOrWhiteSpace(reply)) return reply;
+
+            var lines = reply.Split('\n');
+            var cleanLines = lines.Where(line =>
+            {
+                var trimmed = line.TrimStart();
+                // Строки с двумя и более подряд идущими табами — признак raw DB данных
+                if (trimmed.Contains("\t\t")) return false;
+                // Строки вида "число TAB число" — raw ID строки из БД
+                if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^\d+\t\d+"))
+                    return false;
+                return true;
+            });
+
+            return string.Join('\n', cleanLines).Trim();
         }
 
         private static PendingTaskDto ParsePendingTask(JsonElement el) => new()
@@ -349,7 +371,7 @@ namespace Tasky.Infrastructure.ExternalServices
             {
                 sb.AppendLine();
                 sb.AppendLine();
-                sb.Append($"...и ещё {total - QueryTasksMaxDisplay}. Посмотреть все можно в соответствующих списках.");
+                sb.Append($"И ещё {total - QueryTasksMaxDisplay}. Посмотреть все можно в веб-приложении TaskyAI.");
             }
 
             return new AiChatResponse
@@ -619,6 +641,9 @@ namespace Tasky.Infrastructure.ExternalServices
                 return string.Empty;
             }
         }
+
+        public Task SaveConfirmationToHistoryAsync(int userId, string userAction, string resultMessage)
+            => SaveMessagesAsync(userId, userAction, resultMessage);
 
         public async Task<AiConversationHistoryListResponse> GetHistoryAsync(int userId, int page, int limit)
         {

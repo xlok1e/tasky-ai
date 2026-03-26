@@ -11,5 +11,6 @@ namespace Tasky.Application.Interfaces
         Task<bool> ConfirmDeleteAsync(int userId, int taskId);
         Task<string> TranscribeAudioAsync(Stream audioStream, string fileName);
         Task<AiConversationHistoryListResponse> GetHistoryAsync(int userId, int page, int limit);
+        Task SaveConfirmationToHistoryAsync(int userId, string userAction, string resultMessage);
     }
 }

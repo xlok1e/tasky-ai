@@ -157,7 +157,6 @@ public class TelegramBotService(
 
         await db.SaveChangesAsync(ct);
 
-        // Create default settings for new users
         var existingSettings = await db.UserSettings
             .FirstOrDefaultAsync(s => s.UserId == user.Id, ct);
 
@@ -190,7 +189,6 @@ public class TelegramBotService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // Найти пользователя по TelegramId
         var user = await db.Users
             .FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
 
@@ -204,22 +202,18 @@ public class TelegramBotService(
 
         try
         {
-            // Отправить сообщение о обработке
+
             await bot.SendMessage(chatId,
                 "⏳ Обрабатываю ваше сообщение...",
                 cancellationToken: ct);
 
-            // Вызвать ИИ-ассистент с таймаутом
+
             using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
                 var response = await aiAssistantService.ChatAsync(user.Id, userMessage);
 
-                // Сообщения уже сохранены в AiAssistantService.ChatAsync()
-                // Не нужно сохранять их здесь повторно
-
-                // Отправить ответ пользователю
                 await bot.SendMessage(chatId,
                     response.Reply,
                     cancellationToken: ct);

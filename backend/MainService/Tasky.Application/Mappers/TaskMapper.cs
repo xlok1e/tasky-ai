@@ -34,6 +34,7 @@ namespace Tasky.Application.Mappers
                 item.Description,
                 item.StartAt,
                 item.EndAt,
+                item.IsAllDay,
                 item.Priority,
                 item.Status,
                 item.CreatedAt,

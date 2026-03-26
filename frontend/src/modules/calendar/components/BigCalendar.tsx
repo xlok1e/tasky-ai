@@ -10,7 +10,7 @@ import { ru } from "date-fns/locale";
 import { Clock } from "lucide-react";
 import type { CalendarProps } from "react-big-calendar";
 import type { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
-import type { Task } from "@modules/tasks/types/task.api.types";
+import type { Task } from "@modules/tasks/types/task.types";
 import { getContrastColor, hexToRgba } from "@modules/calendar/utils/calendar.utils";
 
 import type { View } from "react-big-calendar";

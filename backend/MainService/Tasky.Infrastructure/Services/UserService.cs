@@ -49,7 +49,8 @@ public class UserService : IUserService
             settings.MorningNotificationTime,
             settings.EveningNotificationsEnabled,
             settings.EveningNotificationTime,
-            settings.UseBuiltinCalendar
+            settings.UseBuiltinCalendar,
+            settings.OnboardingCompleted
         );
     }
 
@@ -85,6 +86,9 @@ public class UserService : IUserService
         if (request.UseBuiltinCalendar.HasValue)
             settings.UseBuiltinCalendar = request.UseBuiltinCalendar.Value;
 
+        if (request.OnboardingCompleted.HasValue)
+            settings.OnboardingCompleted = request.OnboardingCompleted.Value;
+
         _db.UserSettings.Update(settings);
         await _db.SaveChangesAsync();
 
@@ -96,8 +100,8 @@ public class UserService : IUserService
             settings.MorningNotificationTime,
             settings.EveningNotificationsEnabled,
             settings.EveningNotificationTime,
-            settings.UseBuiltinCalendar
+            settings.UseBuiltinCalendar,
+            settings.OnboardingCompleted
         );
     }
 }
-

@@ -10,6 +10,7 @@ export interface TaskResponse {
 	description: string | null;
 	startAt: string | null;
 	endAt: string | null;
+	isAllDay: boolean;
 	deadline: string | null;
 	priority: TaskPriority;
 	status: TaskStatus;

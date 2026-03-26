@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getGoogleAuthUrl } from "@domains/google/api/google.api";
 import { useGoogleStore } from "@domains/google/store/google.store";
 import { useUserStore } from "@domains/user/store/user.store";
+import { getSettings } from "@domains/user/api/user.api";
 import {
 	DEFAULT_TIME_ZONE,
 	DEFAULT_WORK_DAY_END,
@@ -29,10 +30,15 @@ function toApiTimeValue(value: string): string {
 	return `${value}:00`;
 }
 
+function stripTimeSeconds(time: string): string {
+	return time.substring(0, 5);
+}
+
 export function useOnboardingView() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const disconnectGoogle = useGoogleStore((state) => state.disconnect);
+	const syncGoogleCalendar = useGoogleStore((state) => state.sync);
 	const updateSettings = useUserStore((state) => state.updateSettings);
 
 	const [step, setStep] = useState<OnboardingStep>("calendar");
@@ -51,6 +57,34 @@ export function useOnboardingView() {
 			window.history.replaceState({}, "", "/onboarding");
 		}
 	}, [searchParams]);
+
+	useEffect(() => {
+		const loadExistingSettings = async () => {
+			try {
+				const settings = await getSettings();
+
+				if (settings.onboardingCompleted === true) {
+					router.replace("/inbox");
+					return;
+				}
+
+				setWorkDayStart(stripTimeSeconds(settings.workDayStart));
+				setWorkDayEnd(stripTimeSeconds(settings.workDayEnd));
+				setTimeZone(settings.timeZone);
+				setMorningEnabled(settings.morningNotificationsEnabled);
+				setEveningEnabled(settings.eveningNotificationsEnabled);
+
+				if (!settings.useBuiltinCalendar) {
+					setCalendarChoice("google");
+				}
+			} catch {
+				// Silently use defaults already set in useState
+			}
+		};
+
+		loadExistingSettings();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	const stepLabel = useMemo(() => {
 		const currentStepNumber = ONBOARDING_STEP_NUMBER[step];
@@ -162,6 +196,7 @@ export function useOnboardingView() {
 		const updatedSettings = await updateSettings({
 			morningNotificationsEnabled: morningEnabled,
 			eveningNotificationsEnabled: eveningEnabled,
+			onboardingCompleted: true,
 		});
 		setIsLoading(false);
 
@@ -170,7 +205,10 @@ export function useOnboardingView() {
 			return;
 		}
 
-		localStorage.setItem("onboarding_done", "1");
+		if (calendarChoice === "google") {
+			void syncGoogleCalendar();
+		}
+
 		router.replace("/inbox");
 	};
 

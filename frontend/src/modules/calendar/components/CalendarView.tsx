@@ -37,7 +37,7 @@ export function CalendarView() {
 						<Button variant="ghost" className="w-[40px]! h-[40px]!" onClick={handlePrevious}>
 							<ArrowLeft className="size-[24px]" strokeWidth={2} />
 						</Button>
-						<h1 className="text-2xl font-semibold capitalize min-w-[165px] text-center">
+						<h1 className="text-2xl font-semibold capitalize min-w-[180px] text-center">
 							{monthLabel}
 						</h1>
 						<Button variant="ghost" className="w-[40px]! h-[40px]!" onClick={handleNext}>
@@ -60,7 +60,7 @@ export function CalendarView() {
 					<div
 						className="overflow-hidden transition-all duration-200 ease-in-out"
 						style={{
-							width: isAssistantChatOpen ? 0 : "180px",
+							width: isAssistantChatOpen ? 0 : "190px",
 							opacity: isAssistantChatOpen ? 0 : 1,
 						}}
 					>

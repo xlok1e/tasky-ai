@@ -202,24 +202,24 @@ public class TelegramBotService(
 
         try
         {
-
             await bot.SendMessage(chatId,
                 "⏳ Обрабатываю ваше сообщение...",
                 cancellationToken: ct);
 
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-            using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
-            {
-                timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+            var chatTask = aiAssistantService.ChatAsync(user.Id, userMessage);
+            if (await Task.WhenAny(chatTask, Task.Delay(Timeout.Infinite, timeoutCts.Token)) != chatTask)
+                throw new OperationCanceledException("AI request timed out");
 
-                var response = await aiAssistantService.ChatAsync(user.Id, userMessage);
+            var response = await chatTask;
 
-                await bot.SendMessage(chatId,
-                    response.Reply,
-                    cancellationToken: ct);
+            await bot.SendMessage(chatId,
+                response.Reply,
+                cancellationToken: ct);
 
-                logger.LogInformation("AI message processed successfully for user {UserId}", user.Id);
-            }
+            logger.LogInformation("AI message processed successfully for user {UserId}", user.Id);
         }
         catch (OperationCanceledException)
         {

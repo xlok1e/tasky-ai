@@ -545,6 +545,36 @@ namespace Tasky.Infrastructure.ExternalServices
             );
             await _db.SaveChangesAsync();
         }
+
+        public async Task<AiConversationHistoryListResponse> GetHistoryAsync(int userId, int page, int limit)
+        {
+            var query = _db.AiConversationHistory
+                .Where(h => h.UserId == userId)
+                .OrderBy(h => h.CreatedAt);
+
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)limit);
+
+            var messages = await query
+                .Skip((page - 1) * limit)
+                .Take(limit)
+                .Select(h => new AiConversationHistoryResponse
+                {
+                    Role = h.Role,
+                    Content = h.Content,
+                    CreatedAt = h.CreatedAt
+                })
+                .ToListAsync();
+
+            return new AiConversationHistoryListResponse
+            {
+                Messages = messages,
+                TotalCount = totalCount,
+                Page = page,
+                Limit = limit,
+                TotalPages = totalPages
+            };
+        }
     }
 
     internal static class JsonElementExtensions

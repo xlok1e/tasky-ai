@@ -14,7 +14,7 @@ import { useTaskModal } from "../store/task-modal.store";
 import { useTasksStore } from "../store/tasks.store";
 import { useListsStore } from "@modules/lists/store/lists.store";
 import { Spinner } from "@shared/ui/spinner";
-import { TaskPriority } from "../types/task.types";
+import { TaskPriority } from "../types/task.enums";
 
 function toInputDateTime(date: Date | null | undefined): string {
 	if (!date) return "";
@@ -123,7 +123,14 @@ export function TaskModal() {
 					listId,
 				});
 			} else {
-				await addTask(trimmed, startDate, endDate, null, isAllDay, listId, priority);
+				await addTask({
+					title: trimmed,
+					startDate,
+					endDate,
+					isAllDay,
+					listId,
+					priority,
+				});
 			}
 			close();
 		} finally {

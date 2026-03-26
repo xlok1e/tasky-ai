@@ -9,10 +9,9 @@ import { ChatRole } from "../types/ai-assistant.types";
 import type { ChatMessage, PendingTask, PendingUpdate } from "../types/ai-assistant.types";
 import { useTasksStore } from "@modules/tasks/store/tasks.store";
 import { useGoogleStore } from "@/domains/google/store/google.store";
-import { TaskPriority } from "@modules/tasks/types/task.types";
+import { TaskPriority } from "@modules/tasks/types/task.enums";
 import type { Task } from "@modules/tasks/types/task.types";
 import { formatDateRange } from "../utils/ai-assistsnt-utils";
-
 interface AiAssistantState {
 	messages: ChatMessage[];
 	isLoading: boolean;

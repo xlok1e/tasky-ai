@@ -5,10 +5,12 @@ import {
 	updateTask as apiUpdateTask,
 	deleteTask as apiDeleteTask,
 } from "../api/tasks.api";
-import { mapTaskResponseToTask, TaskPriority, TaskStatus } from "../types/task.types";
-import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../types/task.types";
+import type { CreateTaskRequest, UpdateTaskRequest } from "../types/task.api.types";
 import { toastMessage } from "@/shared/toast/toast";
 import { useGoogleStore } from "@/domains/google/store/google.store";
+import { TaskPriority, TaskStatus } from "../types/task.enums";
+import { AddTaskParams, Task } from "../types/task.types";
+import { mapTaskResponseToTask } from "../utils/tasks.utils";
 
 interface TasksState {
 	tasks: Task[];
@@ -18,15 +20,7 @@ interface TasksState {
 	fetchTasks: () => Promise<void>;
 	_addOptimisticTask: (task: Task) => void;
 	_removeOptimisticTask: (id: number) => void;
-	addTask: (
-		title: string,
-		startDate?: Date | null,
-		endDate?: Date | null,
-		deadline?: Date | null,
-		isAllDay?: boolean,
-		listId?: number | null,
-		priority?: TaskPriority,
-	) => Promise<void>;
+	addTask: (params: AddTaskParams) => Promise<void>;
 	toggleTask: (task: Task) => Promise<void>;
 	updateTask: (
 		id: number,
@@ -39,7 +33,6 @@ interface TasksState {
 				| "startDate"
 				| "endDate"
 				| "isAllDay"
-				| "deadline"
 				| "priority"
 				| "listId"
 			>
@@ -48,7 +41,9 @@ interface TasksState {
 	deleteTask: (id: number) => Promise<void>;
 }
 
-function buildRequest(task: Task): UpdateTaskRequest {
+type UpdateTaskPayload = UpdateTaskRequest & { isAllDay: boolean };
+
+function buildRequest(task: Task): UpdateTaskPayload {
 	return {
 		title: task.title,
 		description: task.description,
@@ -85,34 +80,33 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
 	},
 
-	addTask: async (
+	addTask: async ({
 		title,
 		startDate = null,
 		endDate = null,
-		deadline = null,
 		isAllDay = false,
 		listId = null,
 		priority = TaskPriority.Low,
-	) => {
+	}: AddTaskParams) => {
 		const request: CreateTaskRequest = {
 			title: title.trim(),
-			deadline: deadline ? deadline.toISOString() : null,
 			startAt: startDate ? startDate.toISOString() : null,
 			endAt: endDate ? endDate.toISOString() : null,
 			priority,
 			listId: listId ?? null,
 		};
-		const created = await apiCreateTask(request);
-		const task = mapTaskResponseToTask(created);
-		if (isAllDay && !task.isAllDay) {
-			task.isAllDay = true;
-		}
-		set((state) => ({ tasks: [task, ...state.tasks] }));
+		try {
+			const created = await apiCreateTask(request);
+			const task = { ...mapTaskResponseToTask(created), ...(isAllDay && { isAllDay: true }) };
+			set((state) => ({ tasks: [task, ...state.tasks] }));
 
-		// Background sync if Google Calendar is connected
-		const googleStore = useGoogleStore.getState();
-		if (googleStore.isConnected) {
-			googleStore.syncSilent();
+			// Background sync if Google Calendar is connected
+			const googleStore = useGoogleStore.getState();
+			if (googleStore.isConnected) {
+				googleStore.syncSilent();
+			}
+		} catch {
+			toastMessage.showError("Не удалось создать задачу");
 		}
 	},
 
@@ -131,6 +125,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			set((state) => ({
 				tasks: state.tasks.map((t) => (t.id === task.id ? updatedTask : t)),
 			}));
+			toastMessage.showSuccess(
+				task.isCompleted ? "Выполнение задачи отменено" : "Задача успешно выполнена",
+			);
 		} catch {
 			set((state) => ({
 				tasks: state.tasks.map((t) =>
@@ -150,17 +147,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			tasks: state.tasks.map((t) => (t.id === id ? merged : t)),
 		}));
 
-		const request: UpdateTaskRequest = {
-			title: merged.title,
-			description: merged.description,
-			startAt: merged.startDate ? merged.startDate.toISOString() : null,
-			endAt: merged.endDate ? merged.endDate.toISOString() : null,
-			deadline: merged.deadline ? merged.deadline.toISOString() : null,
-			isAllDay: merged.isAllDay,
-			priority: merged.priority,
-			status: merged.isCompleted ? TaskStatus.Completed : TaskStatus.InProgress,
-			listId: merged.listId,
-		};
+		const request = buildRequest(merged);
 
 		try {
 			const updated = await apiUpdateTask(id, request);
@@ -180,7 +167,13 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 	},
 
 	deleteTask: async (id) => {
-		await apiDeleteTask(id);
+		const prev = get().tasks;
 		set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+		try {
+			await apiDeleteTask(id);
+		} catch {
+			set({ tasks: prev });
+			toastMessage.showError("Не удалось удалить задачу");
+		}
 	},
 }));

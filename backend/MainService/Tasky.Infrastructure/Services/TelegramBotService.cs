@@ -1,4 +1,3 @@
-using System.Net.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -59,6 +58,13 @@ public class TelegramBotService(
             return;
         }
 
+        // Обработка голосовых сообщений
+        if (message.Voice is { } voice)
+        {
+            await ProcessVoiceMessage(bot, chatId, voice, ct);
+            return;
+        }
+
         // Обработка текстовых сообщений (ИИ-ассистент)
         if (message.Text is { } userMessage && !string.IsNullOrWhiteSpace(userMessage))
         {
@@ -82,7 +88,7 @@ public class TelegramBotService(
         if (auth is null || auth.ExpiresAt < DateTime.UtcNow)
         {
             await bot.SendMessage(chatId,
-                "❌ Недействительный или просроченный токен. Сгенерируйте новую ссылку в приложении.",
+                "Недействительный или просроченный токен. Сгенерируйте новую ссылку в приложении.",
                 cancellationToken: ct);
             return;
         }
@@ -90,13 +96,13 @@ public class TelegramBotService(
         if (auth.IsUsed)
         {
             await bot.SendMessage(chatId,
-                $"✅ Вы уже авторизованы! Ваш аккаунт: {auth.User?.Username ?? "Неизвестно"}",
+                $"Вы уже авторизованы! Ваш аккаунт: {auth.User?.Username ?? "Неизвестно"}",
                 cancellationToken: ct);
             return;
         }
 
         await bot.SendMessage(chatId,
-            "📱 Подтвердите свою личность, поделившись номером телефона:",
+            "Подтвердите свою личность, поделившись номером телефона:",
             cancellationToken: ct);
 
         await SendKeyboardMessage(bot, chatId, "📱 Поделиться номером телефона:", ct);
@@ -117,7 +123,7 @@ public class TelegramBotService(
         if (auth is null)
         {
             await bot.SendMessage(chatId,
-                "❌ Нет активных токенов авторизации. Сгенерируйте новую ссылку в приложении.",
+                "Нет активных токенов авторизации. Сгенерируйте новую ссылку в приложении.",
                 cancellationToken: ct);
             return;
         }
@@ -179,27 +185,93 @@ public class TelegramBotService(
         }
 
         await bot.SendMessage(chatId,
-            $"✅ Авторизация успешна, {user.Username}!\n\nТеперь вы можете использовать TaskyAI через Telegram.",
+            $"Авторизация успешна, {user.Username}!\n\nТеперь вы можете использовать TaskyAI через Telegram.",
             replyMarkup: new ReplyKeyboardRemove(),
             cancellationToken: ct);
     }
 
-    private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, CancellationToken ct)
+    private async Task ProcessVoiceMessage(ITelegramBotClient bot, long chatId, Voice voice, CancellationToken ct)
     {
-        using var scope = scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        var user = await db.Users
-            .FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
-
+        var user = await FindUserByChatIdAsync(chatId, ct);
         if (user is null)
         {
             await bot.SendMessage(chatId,
-                "❌ Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
+                "Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
                 cancellationToken: ct);
             return;
         }
 
+        try
+        {
+            await bot.SendMessage(chatId,
+                "Транскрибирую голосовое сообщение...",
+                cancellationToken: ct);
+
+            using var audioStream = new MemoryStream();
+
+            try
+            {
+                var file = await botClient.GetFile(voice.FileId, ct);
+                if (string.IsNullOrEmpty(file.FilePath))
+                    throw new InvalidOperationException("Telegram did not return a file path");
+
+                await botClient.DownloadFile(file.FilePath, audioStream, ct);
+                audioStream.Position = 0;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error downloading voice file from Telegram for user {UserId}", user.Id);
+                await bot.SendMessage(chatId,
+                    "Ошибка при скачивании файла. Пожалуйста, попробуйте снова.",
+                    cancellationToken: ct);
+                return;
+            }
+
+            var transcribedText = await aiAssistantService.TranscribeAudioAsync(audioStream, $"voice_{voice.FileId}.ogg");
+
+            if (string.IsNullOrWhiteSpace(transcribedText))
+            {
+                await bot.SendMessage(chatId,
+                    "Не удалось расшифровать голосовое сообщение. Пожалуйста, попробуйте снова или отправьте текстовое сообщение.",
+                    cancellationToken: ct);
+                logger.LogWarning("Failed to transcribe voice message for user {UserId}", user.Id);
+                return;
+            }
+
+            await bot.SendMessage(chatId,
+                $"Расшифровка принята:\n\n_{transcribedText}_",
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
+
+            await ProcessAiMessage(bot, chatId, transcribedText, user, ct);
+
+            logger.LogInformation("Voice message transcribed successfully for user {UserId}", user.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing voice message for user {UserId}: {ErrorMessage}", user.Id, ex.Message);
+            await bot.SendMessage(chatId,
+                "Ошибка при обработке голосового сообщения. Пожалуйста, попробуйте снова позже.",
+                cancellationToken: ct);
+        }
+    }
+
+    private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, CancellationToken ct)
+    {
+        var user = await FindUserByChatIdAsync(chatId, ct);
+        if (user is null)
+        {
+            await bot.SendMessage(chatId,
+                "Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
+                cancellationToken: ct);
+            return;
+        }
+
+        await ProcessAiMessage(bot, chatId, userMessage, user, ct);
+    }
+
+    private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, Tasky.Domain.Entities.User user, CancellationToken ct)
+    {
         try
         {
             await bot.SendMessage(chatId,
@@ -225,16 +297,23 @@ public class TelegramBotService(
         {
             logger.LogWarning("AI assistant request timeout for user {UserId}", user.Id);
             await bot.SendMessage(chatId,
-                "⏱️ Время ожидания истекло. Пожалуйста, попробуйте снова.",
+                "Время ожидания истекло. Пожалуйста, попробуйте снова.",
                 cancellationToken: ct);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing AI message for user {UserId}: {ErrorMessage}", user.Id, ex.Message);
             await bot.SendMessage(chatId,
-                "❌ Ошибка при обработке сообщения. Пожалуйста, попробуйте снова позже.",
+                "Ошибка при обработке сообщения. Пожалуйста, попробуйте снова позже.",
                 cancellationToken: ct);
         }
+    }
+
+    private async Task<Tasky.Domain.Entities.User?> FindUserByChatIdAsync(long chatId, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Users.FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
     }
 
     private async Task SendKeyboardMessage(ITelegramBotClient bot, long chatId, string text, CancellationToken ct)

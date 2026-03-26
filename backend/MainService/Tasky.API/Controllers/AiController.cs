@@ -4,6 +4,7 @@ using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Tasky.API.Controllers
 {
@@ -68,6 +69,22 @@ namespace Tasky.API.Controllers
 
 			var deleted = await _aiService.ConfirmDeleteAsync(userId.Value, request.TaskId);
 			return deleted ? NoContent() : NotFound();
+		}
+
+		[HttpGet("history")]
+		[ProducesResponseType(typeof(AiConversationHistoryListResponse), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+		[SwaggerOperation(Summary = "Получить историю диалога с ИИ-ассистентом", Description = "Возвращает историю сообщений пользователя с ИИ-ассистентом с поддержкой пагинации")]
+		public async Task<ActionResult<AiConversationHistoryListResponse>> GetHistory([FromQuery] int page = 1, [FromQuery] int limit = 20)
+		{
+			if (page < 1) page = 1;
+			if (limit < 1 || limit > 100) limit = 20;
+
+			var userId = GetUserId();
+			if (userId is null) return Unauthorized();
+
+			var result = await _aiService.GetHistoryAsync(userId.Value, page, limit);
+			return Ok(result);
 		}
 
 		private int? GetUserId()

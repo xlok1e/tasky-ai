@@ -9,5 +9,6 @@ namespace Tasky.Application.Interfaces
         Task<int> ConfirmTaskAsync(int userId, PendingTaskDto pending);
         Task<TaskResponse> ConfirmUpdateAsync(int userId, PendingUpdateDto pending);
         Task<bool> ConfirmDeleteAsync(int userId, int taskId);
+        Task<AiConversationHistoryListResponse> GetHistoryAsync(int userId, int page, int limit);
     }
 }

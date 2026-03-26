@@ -1,12 +1,19 @@
 import { create } from "zustand";
-import { fetchLists as apiFetchLists } from "@modules/lists/api/lists.api";
-import type { ListResponse } from "@modules/lists/types/list.types";
+import {
+  fetchLists as apiFetchLists,
+  createList as apiCreateList,
+} from "@modules/lists/api/lists.api";
+import type {
+  CreateListRequest,
+  ListResponse,
+} from "@modules/lists/types/list.types";
 
 interface ListsState {
   lists: ListResponse[];
   isLoading: boolean;
   error: string | null;
   fetchLists: () => Promise<void>;
+  createList: (data: CreateListRequest) => Promise<void>;
 }
 
 export const useListsStore = create<ListsState>((set) => ({
@@ -21,6 +28,16 @@ export const useListsStore = create<ListsState>((set) => ({
       set({ lists: data, isLoading: false });
     } catch {
       set({ isLoading: false, error: "Не удалось загрузить списки" });
+    }
+  },
+
+  createList: async (data: CreateListRequest) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await apiCreateList(data);
+      set((state) => ({ lists: [...state.lists, result], isLoading: false }));
+    } catch {
+      set({ isLoading: false, error: "Не удалось создать список" });
     }
   },
 }));

@@ -118,14 +118,22 @@ namespace Tasky.Infrastructure.ExternalServices
             var tomorrow = today.AddDays(1);
             var weekEnd  = today.AddDays(6);
 
+            var weekCalendar = BuildWeekCalendar(today);
+            var dateResolution = BuildDateResolutionTable(today);
+
             return $$"""
             You are TaskyAI — a personal task planner assistant. Respond ONLY with valid JSON (no markdown fences).
 
             CONTEXT:
-            - Current date/time: {{localNow:yyyy-MM-dd HH:mm}} GMT+3
+            - Current date/time: {{localNow:yyyy-MM-dd HH:mm}} GMT+3 ({{GetRussianDayOfWeek(localNow.DayOfWeek)}})
             - Google Calendar: {{(isGoogleConnected ? "connected" : "not connected")}}
             - User's lists: {{listsContext}}
             - Upcoming tasks (internal reference only, ID:name@MM-dd HH:mm): {{taskContext}}
+
+            DATE RESOLUTION — CRITICAL: when user says a relative day name, use EXACTLY this date, never calculate:
+            {{dateResolution}}
+
+            Full week reference: {{weekCalendar}}
 
             OUTPUT FORMAT (always this exact structure):
             {"reply":"<Russian text>","intent":<null|"create_task"|"update_task"|"query_tasks"|"sync_google"|"disconnect_google">,"pendingTask":<object|null>,"pendingUpdate":<object|null>,"pendingQuery":<object|null>}
@@ -153,6 +161,7 @@ namespace Tasky.Infrastructure.ExternalServices
             - isAllDay=false → endAt = startAt + 1 hour if user did not specify end time.
             - priority: "Low" by default unless user says otherwise ("высокий", "срочно" → "High").
             - listName: exact name from Lists above, or null.
+            - reply MUST contain ONLY the confirmation question. Do NOT mention Google Calendar, do NOT add any extra comments.
 
             [intent = "update_task"] User wants to change an existing task:
             - pendingUpdate MUST be a non-null object. NEVER set pendingUpdate to null for this intent.
@@ -185,6 +194,7 @@ namespace Tasky.Infrastructure.ExternalServices
             3. The tasks context above is for YOUR INTERNAL REFERENCE ONLY — never reproduce it in replies unless the user explicitly asked to list tasks (query_tasks intent).
             4. Always reply in Russian. Be concise and answer only what was asked.
             5. When intent = create_task or update_task, the corresponding pending object is MANDATORY — if you cannot fill it, use intent=null and ask for clarification instead.
+            6. When intent = create_task or update_task: reply contains ONLY the confirmation question — no Google Calendar status, no extra advice, nothing else.
             """;
         }
 
@@ -203,6 +213,77 @@ namespace Tasky.Infrastructure.ExternalServices
 
             yield return new { role = "user", content = newMessage };
         }
+
+        private static string BuildDateResolutionTable(DateTime today)
+        {
+            // Find the nearest future (or today) occurrence of each weekday
+            var russianNames = new[]
+            {
+                ("понедельник", "пн", DayOfWeek.Monday),
+                ("вторник",     "вт", DayOfWeek.Tuesday),
+                ("среду",       "ср", DayOfWeek.Wednesday),
+                ("четверг",     "чт", DayOfWeek.Thursday),
+                ("пятницу",     "пт", DayOfWeek.Friday),
+                ("субботу",     "сб", DayOfWeek.Saturday),
+                ("воскресенье", "вс", DayOfWeek.Sunday),
+            };
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"сегодня/today = {today:yyyy-MM-dd}, завтра/tomorrow = {today.AddDays(1):yyyy-MM-dd}, послезавтра = {today.AddDays(2):yyyy-MM-dd}");
+
+            foreach (var (longName, shortName, dow) in russianNames)
+            {
+                var daysUntil = ((int)dow - (int)today.DayOfWeek + 7) % 7;
+                // If today is that weekday, "в X" means next week
+                if (daysUntil == 0) daysUntil = 7;
+                var targetDate = today.AddDays(daysUntil);
+                sb.AppendLine($"в {longName} / {shortName} = {targetDate:yyyy-MM-dd}");
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        private static string BuildWeekCalendar(DateTime today)
+        {
+            // Monday of current week
+            var daysFromMonday = ((int)today.DayOfWeek + 6) % 7;
+            var thisMonday = today.AddDays(-daysFromMonday);
+
+            var sb = new StringBuilder();
+            var russianDays = new[] { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
+
+            sb.Append("This week: ");
+            for (var i = 0; i < 7; i++)
+            {
+                var date = thisMonday.AddDays(i);
+                var marker = date == today ? " (сегодня)" : "";
+                sb.Append($"{russianDays[i]}={date:yyyy-MM-dd}{marker}");
+                if (i < 6) sb.Append(", ");
+            }
+
+            sb.Append(" | Next week: ");
+            var nextMonday = thisMonday.AddDays(7);
+            for (var i = 0; i < 7; i++)
+            {
+                var date = nextMonday.AddDays(i);
+                sb.Append($"{russianDays[i]}={date:yyyy-MM-dd}");
+                if (i < 6) sb.Append(", ");
+            }
+
+            return sb.ToString();
+        }
+
+        private static string GetRussianDayOfWeek(DayOfWeek dow) => dow switch
+        {
+            DayOfWeek.Monday => "понедельник",
+            DayOfWeek.Tuesday => "вторник",
+            DayOfWeek.Wednesday => "среда",
+            DayOfWeek.Thursday => "четверг",
+            DayOfWeek.Friday => "пятница",
+            DayOfWeek.Saturday => "суббота",
+            DayOfWeek.Sunday => "воскресенье",
+            _ => ""
+        };
 
         private static AiChatResponse ParseResponse(string raw)
         {

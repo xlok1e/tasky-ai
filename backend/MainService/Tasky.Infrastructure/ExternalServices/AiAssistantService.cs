@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +21,7 @@ namespace Tasky.Infrastructure.ExternalServices
 
         private const string ModelName = "gemini-2.5-flash";
         private const string HttpClientName = "gptunnel";
+        private const string WhisperClientName = "whisper";
         private const int MaxHistoryMessages = 5;
         private const int TasksMaxCount = 25;
 
@@ -593,7 +593,7 @@ namespace Tasky.Infrastructure.ExternalServices
         {
             var now = DateTime.UtcNow;
             _db.AiConversationHistory.AddRange(
-                new AiConversationHistory { UserId = userId, Role = "user",  Content = userMsg,      CreatedAt = now },
+                new AiConversationHistory { UserId = userId, Role = "user",  Content = userMsg,     CreatedAt = now },
                 new AiConversationHistory { UserId = userId, Role = "model", Content = assistantMsg, CreatedAt = now }
             );
             await _db.SaveChangesAsync();
@@ -613,10 +613,10 @@ namespace Tasky.Infrastructure.ExternalServices
                 streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
 
                 form.Add(streamContent, "file", fileName);
-                form.Add(new StringContent("whisper-1"), "model");
+                form.Add(new StringContent("whisper-large-v3"), "model");
                 form.Add(new StringContent("ru"), "language");
 
-                var client = _httpClientFactory.CreateClient(HttpClientName);
+                var client = _httpClientFactory.CreateClient(WhisperClientName);
                 using var response = await client.PostAsync("v1/audio/transcriptions", form);
 
                 if (!response.IsSuccessStatusCode)

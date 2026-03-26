@@ -213,9 +213,7 @@ public class TelegramBotService(
 
         try
         {
-            await bot.SendMessage(chatId,
-                "Транскрибирую голосовое сообщение...",
-                cancellationToken: ct);
+            await bot.SendChatAction(chatId, ChatAction.Typing, cancellationToken: ct);
 
             using var audioStream = new MemoryStream();
 
@@ -249,11 +247,6 @@ public class TelegramBotService(
                 logger.LogWarning("Failed to transcribe voice message for user {UserId}", user.Id);
                 return;
             }
-
-            await bot.SendMessage(chatId,
-                $"Расшифровка принята:\n\n_{transcribedText}_",
-                parseMode: ParseMode.Markdown,
-                cancellationToken: ct);
 
             await ProcessAiMessage(bot, chatId, transcribedText, user, ct);
 

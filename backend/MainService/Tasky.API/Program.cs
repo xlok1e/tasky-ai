@@ -90,6 +90,13 @@ builder.Services.AddHttpClient("gptunnel", client =>
         new AuthenticationHeaderValue("Bearer", builder.Configuration["GPTunnel:ApiKey"]);
 });
 
+builder.Services.AddHttpClient("whisper", client =>
+{
+    client.BaseAddress = new Uri("https://api.groq.com/openai/");
+    client.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", builder.Configuration["Groq:ApiKey"]);
+});
+
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer(options =>
     {

@@ -10,6 +10,8 @@ export function AiAssistantMessages({
 	bottomRef,
 	onConfirmTask,
 	onRejectTask,
+	onConfirmUpdate,
+	onRejectUpdate,
 }: AiAssistantMessagesProps) {
 	const { messages } = useAiAssistant();
 
@@ -40,10 +42,19 @@ export function AiAssistantMessages({
 							key={message.id}
 							message={message}
 							onConfirm={() => {
-								if (!message.pendingTask) return;
-								onConfirmTask(message.id, message.pendingTask);
+								if (message.pendingTask) {
+									onConfirmTask(message.id, message.pendingTask);
+								} else if (message.pendingUpdate) {
+									onConfirmUpdate(message.id, message.pendingUpdate);
+								}
 							}}
-							onReject={() => onRejectTask(message.id)}
+							onReject={() => {
+								if (message.pendingTask) {
+									onRejectTask(message.id);
+								} else {
+									onRejectUpdate(message.id);
+								}
+							}}
 						/>
 					))}
 				</div>

@@ -21,8 +21,7 @@ namespace Tasky.Infrastructure.ExternalServices
         private const string ModelName = "gemini-2.5-flash";
         private const string HttpClientName = "gptunnel";
         private const int MaxHistoryMessages = 5;
-        private const int TasksMaxCount = 10;
-        private const int TasksUpcomingDays = 14;
+        private const int TasksMaxCount = 25;
 
         private const int QueryTasksMaxDisplay = 15;
 
@@ -119,15 +118,15 @@ namespace Tasky.Infrastructure.ExternalServices
             return $$"""
             TaskyAI — task planner. DateTime: {{localNow:yyyy-MM-dd HH:mm}} GMT+3. Google Calendar: {{(isGoogleConnected ? "connected" : "not connected")}}.
             Lists: {{listsContext}}
-            Tasks (format ID:name@MM-dd HH:mm): {{taskContext}}
+            Tasks (format ID:name@MM-dd HH:mm GMT+3): {{taskContext}}
 
             Reply ONLY with valid JSON, no markdown:
             {"reply":"...","intent":null|"create_task"|"update_task"|"query_tasks"|"sync_google"|"disconnect_google","pendingTask":{"title":"","description":null,"startAt":null,"endAt":null,"isAllDay":false,"priority":"Low","listName":null}|null,"pendingUpdate":{"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null}|null,"pendingQuery":{"dateFrom":null,"dateTo":null,"listName":null,"priority":null,"status":null}|null}
 
             Rules:
             - intent=null: plain conversation, no action.
-            - create_task: startAt/endAt=ISO8601 UTC(GMT+3-3h), isAllDay=true if no specific time, priority="Low" default, listName=exact name from Lists or null. reply=ask user to confirm (in Russian).
-            - update_task: find task by name in context→use its ID. Not found/ambiguous→intent=null, ask clarification. Set ONLY changed fields(rest=null). status:"Completed"/"InProgress"/null. reply=describe changes+ask to confirm (in Russian).
+            - create_task: pendingTask is REQUIRED (MUST be a non-null object, NEVER null). startAt/endAt=ISO8601 UTC(GMT+3-3h). isAllDay=true when user gives ONLY a date/period ("today", "tomorrow", "on Monday") with NO clock time — do NOT invent a time; isAllDay=false ONLY when user explicitly states a clock time ("at 3pm", "в 18:00"). For isAllDay=true: startAt=midnight GMT+3 of that day −3h (UTC), endAt=null. priority="Low" default, listName=exact name from Lists or null. reply=ask user to confirm (in Russian).
+            - update_task: pendingUpdate is REQUIRED (MUST be a non-null object, NEVER null). Find task by name using FUZZY match — accept typos, missing/extra letters, partial input, different case, different word endings (e.g. "ложитьс спать"→"ложиться спать", "созвон"→"Созвон"). Pick the closest single match by name. Truly not found→intent=null, ask. Ambiguous (2+ equally close)→intent=null, list candidates, ask to clarify. Set ONLY changed fields(rest=null). status:"Completed"/"InProgress"/null. reply=describe changes+ask to confirm (in Russian).
             - Delete task: refuse — "К сожалению, я не могу удалить задачу в целях безопасности. Удалить можно вручную в приложении." intent=null.
             - query_tasks: reply=short header ONLY (task list appended by system). pendingQuery REQUIRED (never null). dateFrom/dateTo=GMT+3 no suffix, system converts to UTC.
               Preset dates: today="{{today:yyyy-MM-dd}}T00:00:00".."{{today:yyyy-MM-dd}}T23:59:59", tomorrow="{{tomorrow:yyyy-MM-dd}}T00:00:00".."{{tomorrow:yyyy-MM-dd}}T23:59:59", week="{{today:yyyy-MM-dd}}T00:00:00".."{{weekEnd:yyyy-MM-dd}}T23:59:59". listName=exact from Lists|null. status:"Completed"/"InProgress"/null(all).
@@ -156,8 +155,9 @@ namespace Tasky.Infrastructure.ExternalServices
             var json = raw.Trim();
             if (json.StartsWith("```"))
             {
-                json = string.Join("\n", json.Split('\n').Skip(1).SkipLast(1)).Trim();
+                json = string.Join("\n", json.Split('\n').Skip(1).SkipLast(1));
             }
+            json = json.Trim();
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
@@ -171,24 +171,34 @@ namespace Tasky.Infrastructure.ExternalServices
                 : null;
 
             PendingTaskDto? pendingTask = null;
-            if (intent == "create_task"
+            if (string.Equals(intent, "create_task", StringComparison.OrdinalIgnoreCase)
                 && root.TryGetProperty("pendingTask", out var ptEl)
                 && ptEl.ValueKind == JsonValueKind.Object)
                 pendingTask = ParsePendingTask(ptEl);
 
             PendingUpdateDto? pendingUpdate = null;
-            if (intent == "update_task"
+            if (string.Equals(intent, "update_task", StringComparison.OrdinalIgnoreCase)
                 && root.TryGetProperty("pendingUpdate", out var puEl)
                 && puEl.ValueKind == JsonValueKind.Object)
                 pendingUpdate = ParsePendingUpdate(puEl);
 
-
-
             PendingQueryDto? pendingQuery = null;
-            if (intent == "query_tasks"
+            if (string.Equals(intent, "query_tasks", StringComparison.OrdinalIgnoreCase)
                 && root.TryGetProperty("pendingQuery", out var pqEl)
                 && pqEl.ValueKind == JsonValueKind.Object)
                 pendingQuery = ParsePendingQuery(pqEl);
+
+            // Fallback: intent says create/update but the corresponding object is missing
+            if (string.Equals(intent, "create_task", StringComparison.OrdinalIgnoreCase) && pendingTask == null)
+            {
+                reply += "\n\n⚠️ Не удалось распознать задачу. Попробуйте сформулировать запрос иначе.";
+                intent = null;
+            }
+            if (string.Equals(intent, "update_task", StringComparison.OrdinalIgnoreCase) && pendingUpdate == null)
+            {
+                reply += "\n\n⚠️ Не удалось распознать изменения задачи. Попробуйте сформулировать запрос иначе.";
+                intent = null;
+            }
 
             return new AiChatResponse
             {
@@ -356,10 +366,18 @@ namespace Tasky.Infrastructure.ExternalServices
 
             if (pending.IsAllDay)
             {
-                startAt = pending.StartAt.HasValue
-                    ? DateTime.SpecifyKind(pending.StartAt.Value.Date, DateTimeKind.Utc)
-                    : null;
-                endAt = null;
+                // AI sends midnight GMT+3 as UTC (e.g. 2026-03-25T21:00:00Z = midnight 2026-03-26 GMT+3).
+                // Convert to GMT+3 to get the correct local date, then back to UTC midnight GMT+3.
+                if (pending.StartAt.HasValue)
+                {
+                    var localDate = pending.StartAt.Value.AddHours(3).Date;   // midnight GMT+3 as plain DateTime
+                    startAt = DateTime.SpecifyKind(localDate.AddHours(-3), DateTimeKind.Utc); // back to UTC
+                }
+                else
+                {
+                    startAt = null;
+                }
+                endAt = startAt.HasValue ? startAt.Value.AddDays(1) : null;
             }
             else
             {
@@ -517,13 +535,23 @@ namespace Tasky.Infrastructure.ExternalServices
 
         private async Task<string> LoadUserTasksContextAsync(int userId)
         {
-            var upcomingCutoff = DateTime.UtcNow.AddDays(TasksUpcomingDays);
+            var localToday = DateTime.UtcNow.AddHours(3).Date;
+
+            // Начало сегодня GMT+3 → UTC
+            var lowerBound = DateTime.SpecifyKind(localToday.AddHours(-3), DateTimeKind.Utc);
+
+            // Конец воскресенья следующей недели GMT+3 → UTC (exclusive <)
+            // DayOfWeek: Sunday=0 … Saturday=6
+            var daysToNextSunday = ((7 - (int)localToday.DayOfWeek) % 7) + 7;
+            var upperBound = DateTime.SpecifyKind(
+                localToday.AddDays(daysToNextSunday + 1).AddHours(-3), DateTimeKind.Utc);
 
             var tasks = await _db.Tasks
                 .Where(t => t.UserId == userId
                     && t.Status == TaskCompletionStatus.InProgress
                     && t.StartAt != null
-                    && t.StartAt <= upcomingCutoff)
+                    && t.StartAt >= lowerBound
+                    && t.StartAt < upperBound)
                 .OrderBy(t => t.StartAt)
                 .Take(TasksMaxCount)
                 .Select(t => new { t.Id, t.Title, t.StartAt })
@@ -533,7 +561,7 @@ namespace Tasky.Infrastructure.ExternalServices
                 return "(нет)";
 
             return string.Join(";", tasks.Select(t =>
-                $"{t.Id}:{t.Title}@{t.StartAt!.Value:MM-dd HH:mm}"));
+                $"{t.Id}:{t.Title}@{t.StartAt!.Value.AddHours(3):MM-dd HH:mm}"));
         }
 
         private async Task SaveMessagesAsync(int userId, string userMsg, string assistantMsg)

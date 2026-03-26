@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { Toaster } from "sonner";
+import { Toaster } from "@shared/ui/sonner";
 import { Providers } from "./providers";
 
 const lineSeedJP = localFont({

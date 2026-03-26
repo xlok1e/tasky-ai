@@ -8,7 +8,7 @@ import { Views } from "react-big-calendar";
 import type { View } from "react-big-calendar";
 import { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import { CalendarTaskEvent } from "../components/BigCalendar";
-import { deriveAllDay, clampToSingleDay } from "../utils/calendar.utils";
+import { deriveAllDay } from "../utils/calendar.utils";
 
 const MIN_EVENT_DURATION_MS = 15 * 60 * 1000;
 
@@ -51,14 +51,21 @@ export function useCalendarView(view: View) {
 	const events = useMemo<CalendarTaskEvent[]>(
 		() =>
 			tasks
-				.filter((t) => t.startDate !== null && t.endDate !== null)
+				.filter((t) => t.startDate !== null && (t.endDate !== null || t.isAllDay))
 				.map((t) => {
 					const list = t.listId !== null ? lists.find((l) => l.id === t.listId) : undefined;
+					const rawEnd = t.endDate ?? new Date(t.startDate!.getTime() + 24 * 60 * 60 * 1000);
+					// All-day: use short duration so RBC doesn't span 2 days
+					// and drag preview into the time grid shows a 1 h block instead of 24 h.
+					// In the all-day header row RBC always renders full-width regardless of duration.
+					const displayEnd = t.isAllDay
+						? new Date(t.startDate!.getTime() + 60 * 60 * 1000)
+						: rawEnd;
 					return {
 						resource: t,
 						title: t.title,
 						start: t.startDate!,
-						end: t.endDate!,
+						end: displayEnd,
 						allDay: t.isAllDay,
 						colorHex: list?.colorHex,
 					};
@@ -81,20 +88,25 @@ export function useCalendarView(view: View) {
 	);
 
 	const handleEventDrop = useCallback(
-		({ event, start, end, isAllDay }: EventInteractionArgs<CalendarTaskEvent>) => {
+		({ event, start, end, isAllDay: droppedAsAllDay }: EventInteractionArgs<CalendarTaskEvent>) => {
 			const nextStart = new Date(start);
-			const nextEnd = new Date(end);
-			const nextAllDay = deriveAllDay(nextStart, nextEnd, isAllDay, event.allDay);
-			const normalizedEnd =
-				!nextAllDay &&
-				event.allDay &&
-				event.end.getTime() - event.start.getTime() >= 24 * 60 * 60 * 1000
-					? clampToSingleDay(nextStart)
-					: nextEnd;
+			const nextAllDay = deriveAllDay(nextStart, new Date(end), droppedAsAllDay, event.allDay);
+
+			let nextEnd: Date;
+			if (nextAllDay) {
+				// Dropped into all-day row — always full 24 h boundary
+				nextEnd = new Date(nextStart.getTime() + 24 * 60 * 60 * 1000);
+			} else if (event.allDay) {
+				// Was all-day, dropped onto a time slot — default 1 h duration
+				nextEnd = new Date(nextStart.getTime() + 60 * 60 * 1000);
+			} else {
+				// Regular timed drag — RBC preserves the original duration in `end`
+				nextEnd = new Date(end);
+			}
 
 			updateTask(event.resource.id, {
 				startDate: nextStart,
-				endDate: normalizedEnd,
+				endDate: nextEnd,
 				isAllDay: nextAllDay,
 			});
 		},

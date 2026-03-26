@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, ComponentType } from "react";
+import { useCallback, useMemo, useEffect, useRef, ComponentType } from "react";
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
@@ -97,6 +97,98 @@ export function BigCalendar({
 	onEventDrop,
 	onEventResize,
 }: BigCalendarProps) {
+	const calendarRef = useRef<HTMLDivElement>(null);
+	const scrollLockRef = useRef<{
+		locked: boolean;
+		savedScrollTop: number;
+		timeContent: HTMLElement | null;
+		scrollHandler: (() => void) | null;
+		mouseUpHandler: (() => void) | null;
+	}>({
+		locked: false,
+		savedScrollTop: 0,
+		timeContent: null,
+		scrollHandler: null,
+		mouseUpHandler: null,
+	});
+
+	const unlockScroll = useCallback(() => {
+		const lock = scrollLockRef.current;
+		if (!lock.locked) return;
+
+		if (lock.timeContent && lock.scrollHandler) {
+			lock.timeContent.removeEventListener("scroll", lock.scrollHandler);
+		}
+		if (lock.mouseUpHandler) {
+			document.removeEventListener("mouseup", lock.mouseUpHandler);
+			document.removeEventListener("touchend", lock.mouseUpHandler);
+		}
+
+		lock.locked = false;
+		lock.scrollHandler = null;
+		lock.mouseUpHandler = null;
+		lock.timeContent = null;
+	}, []);
+
+	const lockScroll = useCallback(() => {
+		const container = calendarRef.current;
+		if (!container) return;
+
+		const timeContent = container.querySelector<HTMLElement>(".rbc-time-content");
+		if (!timeContent) return;
+
+		const lock = scrollLockRef.current;
+		lock.locked = true;
+		lock.savedScrollTop = timeContent.scrollTop;
+		lock.timeContent = timeContent;
+
+		const scrollHandler = () => {
+			if (lock.locked && lock.timeContent) {
+				lock.timeContent.scrollTop = lock.savedScrollTop;
+			}
+		};
+		lock.scrollHandler = scrollHandler;
+		timeContent.addEventListener("scroll", scrollHandler);
+
+		const mouseUpHandler = () => {
+			// Delay unlock slightly so any final scroll events are still caught
+			setTimeout(() => unlockScroll(), 50);
+		};
+		lock.mouseUpHandler = mouseUpHandler;
+		document.addEventListener("mouseup", mouseUpHandler);
+		document.addEventListener("touchend", mouseUpHandler);
+	}, [unlockScroll]);
+
+	// Cleanup on unmount
+	useEffect(() => {
+		return () => unlockScroll();
+	}, [unlockScroll]);
+
+	const handleDragStart = useCallback(
+		({ event }: { event: CalendarTaskEvent; action: string; direction: string }) => {
+			if (event.allDay) {
+				lockScroll();
+			}
+		},
+		[lockScroll],
+	);
+
+	const handleEventDrop = useCallback(
+		(args: EventInteractionArgs<CalendarTaskEvent>) => {
+			unlockScroll();
+			onEventDrop(args);
+		},
+		[onEventDrop, unlockScroll],
+	);
+
+	const handleEventResize = useCallback(
+		(args: EventInteractionArgs<CalendarTaskEvent>) => {
+			unlockScroll();
+			onEventResize(args);
+		},
+		[onEventResize, unlockScroll],
+	);
+
 	const eventPropGetter = useCallback<
 		NonNullable<CalendarProps<CalendarTaskEvent>["eventPropGetter"]>
 	>((event) => {
@@ -140,31 +232,34 @@ export function BigCalendar({
 	);
 
 	return (
-		<DnDCalendar
-			localizer={localizer}
-			culture="ru"
-			messages={MESSAGES}
-			style={{ height: "100%", width: "100%" }}
-			className="border border-border rounded-lg"
-			defaultView={Views.WEEK}
-			view={view}
-			onView={() => {}}
-			date={date}
-			onNavigate={onNavigate}
-			events={events}
-			selectable
-			resizable
-			draggableAccessor={() => true}
-			resizableAccessor={() => true}
-			eventPropGetter={eventPropGetter}
-			onSelectSlot={(slot) => onSelectSlot(slot.start, slot.end)}
-			onSelectEvent={onSelectEvent}
-			onEventDrop={onEventDrop}
-			onEventResize={onEventResize}
-			toolbar={false}
-			step={5}
-			timeslots={12}
-			components={components}
-		/>
+		<div ref={calendarRef} style={{ height: "100%", width: "100%" }}>
+			<DnDCalendar
+				localizer={localizer}
+				culture="ru"
+				messages={MESSAGES}
+				style={{ height: "100%", width: "100%" }}
+				className="border border-border rounded-lg"
+				defaultView={Views.WEEK}
+				view={view}
+				onView={() => {}}
+				date={date}
+				onNavigate={onNavigate}
+				events={events}
+				selectable
+				resizable
+				draggableAccessor={() => true}
+				resizableAccessor={(event) => !event.allDay}
+				eventPropGetter={eventPropGetter}
+				onSelectSlot={(slot) => onSelectSlot(slot.start, slot.end)}
+				onSelectEvent={onSelectEvent}
+				onEventDrop={handleEventDrop}
+				onEventResize={handleEventResize}
+				onDragStart={handleDragStart}
+				toolbar={false}
+				step={5}
+				timeslots={12}
+				components={components}
+			/>
+		</div>
 	);
 }

@@ -1,11 +1,12 @@
 import { create } from "zustand";
-import { toast } from "sonner";
+import { toastMessage } from "@/shared/toast/toast";
 import {
 	sendMessage as apiSendMessage,
 	confirmTask as apiConfirmTask,
+	confirmUpdate as apiConfirmUpdate,
 } from "../api/ai-assistant.api";
 import { ChatRole } from "../types/ai-assistant.types";
-import type { ChatMessage, PendingTask } from "../types/ai-assistant.types";
+import type { ChatMessage, PendingTask, PendingUpdate } from "../types/ai-assistant.types";
 import { useTasksStore } from "@modules/tasks/store/tasks.store";
 import { useGoogleStore } from "@/domains/google/store/google.store";
 import { TaskPriority } from "@modules/tasks/types/task.types";
@@ -18,6 +19,8 @@ interface AiAssistantState {
 	sendMessage: (text: string) => Promise<void>;
 	confirmTask: (messageId: string, task: PendingTask) => Promise<void>;
 	rejectTask: (messageId: string) => void;
+	confirmUpdate: (messageId: string, update: PendingUpdate) => Promise<void>;
+	rejectUpdate: (messageId: string) => void;
 
 	isAssistantChatOpen: boolean;
 	onCloseAssistantChat: () => void;
@@ -49,7 +52,11 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 	};
 }
 
-const buildAssistantReply = (reply: string, pendingTask?: PendingTask | null): ChatMessage => {
+function buildAssistantReply(
+	reply: string,
+	pendingTask?: PendingTask | null,
+	pendingUpdate?: PendingUpdate | null,
+): ChatMessage {
 	let content = reply;
 
 	if (pendingTask) {
@@ -59,10 +66,29 @@ const buildAssistantReply = (reply: string, pendingTask?: PendingTask | null): C
 	return {
 		id: generateId(),
 		role: ChatRole.Assistant,
-		content: content,
+		content,
 		pendingTask: pendingTask ?? null,
+		pendingUpdate: pendingUpdate ?? null,
 	};
-};
+}
+
+function markAsConfirming(messages: ChatMessage[], messageId: string): ChatMessage[] {
+	return messages.map((m) => (m.id === messageId ? { ...m, isConfirming: true } : m));
+}
+
+function markConfirmDone(
+	messages: ChatMessage[],
+	messageId: string,
+	status: "confirmed" | "rejected",
+): ChatMessage[] {
+	return messages.map((m) =>
+		m.id === messageId ? { ...m, isConfirming: false, pendingActionStatus: status } : m,
+	);
+}
+
+function markConfirmFailed(messages: ChatMessage[], messageId: string): ChatMessage[] {
+	return messages.map((m) => (m.id === messageId ? { ...m, isConfirming: false } : m));
+}
 
 export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 	messages: [],
@@ -85,7 +111,11 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 
 		try {
 			const response = await apiSendMessage(trimmed);
-			const assistantMessage = buildAssistantReply(response.reply, response.pendingTask);
+			const assistantMessage = buildAssistantReply(
+				response.reply,
+				response.pendingTask,
+				response.pendingUpdate,
+			);
 			set((state) => ({
 				messages: [...state.messages, assistantMessage],
 				isLoading: false,
@@ -95,6 +125,7 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 				messages: state.messages.filter((m) => m.id !== userMessage.id),
 				isLoading: false,
 			}));
+			toastMessage.showError("Не удалось отправить сообщение. Попробуйте ещё раз.");
 		}
 	},
 
@@ -103,44 +134,62 @@ export const useAiAssistantStore = create<AiAssistantState>((set) => ({
 		const optimisticTask = pendingTaskToOptimisticTask(task, tempId);
 		const tasksStore = useTasksStore.getState();
 
-		// Mark as confirming
-		set((state) => ({
-			messages: state.messages.map((m) => (m.id === messageId ? { ...m, isConfirming: true } : m)),
-		}));
-
+		set((state) => ({ messages: markAsConfirming(state.messages, messageId) }));
 		tasksStore._addOptimisticTask(optimisticTask);
 
 		try {
 			await apiConfirmTask(task);
 			await tasksStore.fetchTasks();
 
-			// Background sync if Google is connected (no toast)
 			const googleStore = useGoogleStore.getState();
 			if (googleStore.isConnected) {
 				googleStore.syncSilent();
 			}
 
 			set((state) => ({
-				messages: state.messages.map((m) =>
-					m.id === messageId ? { ...m, isConfirming: false, pendingTaskStatus: "confirmed" } : m,
-				),
+				messages: markConfirmDone(state.messages, messageId, "confirmed"),
 			}));
-			toast.success("Задача создана успешно");
+			toastMessage.showSuccess("Задача создана успешно");
 		} catch {
 			tasksStore._removeOptimisticTask(tempId);
-			set((state) => ({
-				messages: state.messages.map((m) =>
-					m.id === messageId ? { ...m, isConfirming: false } : m,
-				),
-			}));
+			set((state) => ({ messages: markConfirmFailed(state.messages, messageId) }));
+			toastMessage.showError("Не удалось создать задачу. Попробуйте ещё раз.");
 		}
 	},
 
 	rejectTask: (messageId: string) => {
 		set((state) => ({
-			messages: state.messages.map((m) =>
-				m.id === messageId ? { ...m, pendingTaskStatus: "rejected" } : m,
-			),
+			messages: markConfirmDone(state.messages, messageId, "rejected"),
+		}));
+	},
+
+	confirmUpdate: async (messageId: string, update: PendingUpdate) => {
+		const tasksStore = useTasksStore.getState();
+
+		set((state) => ({ messages: markAsConfirming(state.messages, messageId) }));
+
+		try {
+			await apiConfirmUpdate(update);
+			await tasksStore.fetchTasks();
+
+			const googleStore = useGoogleStore.getState();
+			if (googleStore.isConnected) {
+				googleStore.syncSilent();
+			}
+
+			set((state) => ({
+				messages: markConfirmDone(state.messages, messageId, "confirmed"),
+			}));
+			toastMessage.showSuccess("Задача обновлена успешно");
+		} catch {
+			set((state) => ({ messages: markConfirmFailed(state.messages, messageId) }));
+			toastMessage.showError("Не удалось обновить задачу. Попробуйте ещё раз.");
+		}
+	},
+
+	rejectUpdate: (messageId: string) => {
+		set((state) => ({
+			messages: markConfirmDone(state.messages, messageId, "rejected"),
 		}));
 	},
 }));

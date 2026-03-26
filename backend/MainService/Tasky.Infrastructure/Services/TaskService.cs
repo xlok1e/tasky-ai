@@ -117,6 +117,7 @@ namespace Tasky.Infrastructure.Services
             task.StartAt = request.StartAt;
             task.EndAt = request.EndAt;
             task.Deadline = request.Deadline;
+            task.IsAllDay = request.IsAllDay;
             task.Priority = request.Priority;
 
             var wasCompleted = task.Status == Tasky.Domain.Enums.TaskCompletionStatus.Completed;

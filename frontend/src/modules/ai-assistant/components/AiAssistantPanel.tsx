@@ -7,7 +7,8 @@ import { AiAssistantHeader } from "./AiAssistantHeader";
 import { AiAssistantMessages } from "./AiAssistantMessages";
 
 export function AiAssistantPanel() {
-	const { messages, isLoading, sendMessage, confirmTask, rejectTask } = useAiAssistant();
+	const { messages, isLoading, sendMessage, confirmTask, rejectTask, confirmUpdate, rejectUpdate } =
+		useAiAssistant();
 	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -18,11 +19,12 @@ export function AiAssistantPanel() {
 		<div className="flex h-full flex-col overflow-hidden bg-background justify-between">
 			<AiAssistantHeader />
 			<AiAssistantMessages
-				messages={messages}
 				isLoading={isLoading}
 				bottomRef={bottomRef}
 				onConfirmTask={confirmTask}
 				onRejectTask={rejectTask}
+				onConfirmUpdate={confirmUpdate}
+				onRejectUpdate={rejectUpdate}
 			/>
 			<div className="px-[18px] pb-6">
 				<ChatInput onSend={sendMessage} isLoading={isLoading} />

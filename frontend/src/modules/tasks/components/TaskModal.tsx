@@ -8,6 +8,7 @@ import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
 import { Checkbox } from "@shared/ui/checkbox";
 import { Label } from "@shared/ui/label";
+import { Switch } from "@shared/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { useTaskModal } from "../store/task-modal.store";
 import { useTasksStore } from "../store/tasks.store";
@@ -18,6 +19,11 @@ import { TaskPriority } from "../types/task.types";
 function toInputDateTime(date: Date | null | undefined): string {
 	if (!date) return "";
 	return format(date, "yyyy-MM-dd'T'HH:mm");
+}
+
+function toInputDate(date: Date | null | undefined): string {
+	if (!date) return "";
+	return format(date, "yyyy-MM-dd");
 }
 
 const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] = [
@@ -33,6 +39,7 @@ export function TaskModal() {
 
 	const [title, setTitle] = useState("");
 	const [isCompleted, setIsCompleted] = useState(false);
+	const [isAllDay, setIsAllDay] = useState(false);
 	const [startValue, setStartValue] = useState("");
 	const [endValue, setEndValue] = useState("");
 	const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Low);
@@ -42,10 +49,22 @@ export function TaskModal() {
 
 	useEffect(() => {
 		if (isOpen) {
+			const allDay = editingTask?.isAllDay ?? false;
 			setTitle(editingTask?.title ?? "");
 			setIsCompleted(editingTask?.isCompleted ?? false);
-			setStartValue(toInputDateTime(editingTask?.startDate ?? prefill?.startDate ?? null));
-			setEndValue(toInputDateTime(editingTask?.endDate ?? prefill?.endDate ?? null));
+			setIsAllDay(allDay);
+
+			const rawStart = editingTask?.startDate ?? prefill?.startDate ?? null;
+			const rawEnd = editingTask?.endDate ?? prefill?.endDate ?? null;
+
+			if (allDay) {
+				setStartValue(toInputDate(rawStart));
+				setEndValue(toInputDate(rawEnd));
+			} else {
+				setStartValue(toInputDateTime(rawStart));
+				setEndValue(toInputDateTime(rawEnd));
+			}
+
 			setPriority(editingTask?.priority ?? TaskPriority.Low);
 			setListId(editingTask?.listId ?? prefill?.listId ?? null);
 			setIsSaving(false);
@@ -53,12 +72,43 @@ export function TaskModal() {
 		}
 	}, [isOpen, editingTask, prefill]);
 
+	const handleAllDayToggle = (checked: boolean) => {
+		setIsAllDay(checked);
+		if (checked) {
+			// Convert datetime-local values to date-only
+			if (startValue) {
+				setStartValue(startValue.substring(0, 10));
+			}
+			setEndValue("");
+		} else {
+			// Convert date-only values to datetime-local
+			if (startValue) {
+				setStartValue(startValue + "T00:00");
+			}
+			if (endValue) {
+				setEndValue(endValue + "T00:00");
+			}
+		}
+	};
+
 	const handleSave = async () => {
 		const trimmed = title.trim();
 		if (!trimmed) return;
 
-		const startDate = startValue ? new Date(startValue) : null;
-		const endDate = endValue ? new Date(endValue) : null;
+		let startDate: Date | null = null;
+		let endDate: Date | null = null;
+
+		if (isAllDay) {
+			if (startValue) {
+				// Set time to midnight for the start date
+				startDate = new Date(startValue + "T00:00:00");
+				// End date is start date + 24 hours
+				endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+			}
+		} else {
+			startDate = startValue ? new Date(startValue) : null;
+			endDate = endValue ? new Date(endValue) : null;
+		}
 
 		setIsSaving(true);
 		try {
@@ -66,13 +116,14 @@ export function TaskModal() {
 				await updateTask(editingTask.id, {
 					title: trimmed,
 					isCompleted,
+					isAllDay,
 					startDate,
 					endDate,
 					priority,
 					listId,
 				});
 			} else {
-				await addTask(trimmed, startDate, endDate, null, false, listId, priority);
+				await addTask(trimmed, startDate, endDate, null, isAllDay, listId, priority);
 			}
 			close();
 		} finally {
@@ -120,33 +171,56 @@ export function TaskModal() {
 				</DialogHeader>
 
 				<div className="flex flex-col gap-3 py-1">
+					{/* All Day toggle */}
+					<div className="flex items-center justify-between">
+						<Label htmlFor="modal-all-day" className="text-sm cursor-pointer">
+							Весь день
+						</Label>
+						<Switch id="modal-all-day" checked={isAllDay} onCheckedChange={handleAllDayToggle} />
+					</div>
+
 					{/* Schedule */}
-					<div className="grid grid-cols-2 gap-3">
+					{isAllDay ? (
 						<div className="flex flex-col gap-1.5">
 							<Label htmlFor="modal-start" className="text-xs text-muted-foreground">
-								Начало
+								Дата
 							</Label>
 							<Input
 								id="modal-start"
-								type="datetime-local"
+								type="date"
 								value={startValue}
 								onChange={(e) => setStartValue(e.target.value)}
 								className="w-full text-sm"
 							/>
 						</div>
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="modal-end" className="text-xs text-muted-foreground">
-								Конец
-							</Label>
-							<Input
-								id="modal-end"
-								type="datetime-local"
-								value={endValue}
-								onChange={(e) => setEndValue(e.target.value)}
-								className="w-full text-sm"
-							/>
+					) : (
+						<div className="grid grid-cols-2 gap-3">
+							<div className="flex flex-col gap-1.5">
+								<Label htmlFor="modal-start" className="text-xs text-muted-foreground">
+									Начало
+								</Label>
+								<Input
+									id="modal-start"
+									type="datetime-local"
+									value={startValue}
+									onChange={(e) => setStartValue(e.target.value)}
+									className="w-full text-sm"
+								/>
+							</div>
+							<div className="flex flex-col gap-1.5">
+								<Label htmlFor="modal-end" className="text-xs text-muted-foreground">
+									Конец
+								</Label>
+								<Input
+									id="modal-end"
+									type="datetime-local"
+									value={endValue}
+									onChange={(e) => setEndValue(e.target.value)}
+									className="w-full text-sm"
+								/>
+							</div>
 						</div>
-					</div>
+					)}
 
 					{/* List */}
 					<div className="flex flex-col gap-1.5">

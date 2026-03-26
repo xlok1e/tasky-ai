@@ -1,5 +1,5 @@
 import { RefObject } from "react";
-import type { ChatMessage as ChatMessageType } from "../types/ai-assistant.types";
+import { TaskStatus } from "@modules/tasks/types/task.types";
 
 export enum ChatRole {
 	User = "user",
@@ -16,12 +16,25 @@ export interface PendingTask {
 	listId: string | null;
 }
 
+export interface PendingUpdate {
+	taskId: number;
+	title: string | null;
+	description: string | null;
+	startAt: string | null;
+	endAt: string | null;
+	isAllDay: boolean | null;
+	status: TaskStatus | null;
+}
+
+export type PendingActionStatus = "confirmed" | "rejected";
+
 export interface ChatMessage {
 	id: string;
 	role: ChatRole;
 	content: string;
 	pendingTask?: PendingTask | null;
-	pendingTaskStatus?: "confirmed" | "rejected" | null;
+	pendingUpdate?: PendingUpdate | null;
+	pendingActionStatus?: PendingActionStatus | null;
 	isConfirming?: boolean;
 }
 
@@ -31,11 +44,17 @@ export interface ChatRequest {
 
 export interface ChatResponse {
 	reply: string;
+	intent: string | null;
 	pendingTask?: PendingTask | null;
+	pendingUpdate?: PendingUpdate | null;
 }
 
 export interface ConfirmTaskRequest {
 	task: PendingTask;
+}
+
+export interface ConfirmUpdateRequest {
+	update: PendingUpdate;
 }
 
 export interface AiAssistantMessagesProps {
@@ -43,10 +62,12 @@ export interface AiAssistantMessagesProps {
 	bottomRef: RefObject<HTMLDivElement | null>;
 	onConfirmTask: (messageId: string, task: PendingTask) => void;
 	onRejectTask: (messageId: string) => void;
+	onConfirmUpdate: (messageId: string, update: PendingUpdate) => void;
+	onRejectUpdate: (messageId: string) => void;
 }
 
 export interface ChatMessageProps {
-	message: ChatMessageType;
+	message: ChatMessage;
 	onConfirm: () => void;
 	onReject: () => void;
 }

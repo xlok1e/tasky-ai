@@ -7,9 +7,8 @@ public record TaskUpdateRequest(
     DateTime? StartAt,
     DateTime? EndAt,
     DateTime? Deadline,
+    bool IsAllDay,
     TaskPriority Priority,
     TaskCompletionStatus Status,
     int? ListId
-
 );
-

@@ -545,6 +545,46 @@ namespace Tasky.Infrastructure.ExternalServices
             );
             await _db.SaveChangesAsync();
         }
+
+        public async Task<string> TranscribeAudioAsync(Stream audioStream, string fileName)
+        {
+            if (audioStream == null || audioStream.Length == 0)
+                return string.Empty;
+
+            try
+            {
+                using var form = new MultipartFormDataContent();
+                
+                // Не используем using для StreamContent, так как MultipartFormDataContent будет управлять жизненным циклом
+                var streamContent = new StreamContent(audioStream);
+                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/ogg");
+                
+                form.Add(streamContent, "file", fileName);
+                form.Add(new StringContent("whisper-1"), "model");
+                form.Add(new StringContent("ru"), "language");
+
+                var client = _httpClientFactory.CreateClient(HttpClientName);
+                using var response = await client.PostAsync("v1/audio/transcriptions", form);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    return string.Empty;
+                }
+
+                using var responseStream = await response.Content.ReadAsStreamAsync();
+                using var doc = await JsonDocument.ParseAsync(responseStream);
+                
+                var text = doc.RootElement.TryGetProperty("text", out var textEl)
+                    ? textEl.GetString() ?? string.Empty
+                    : string.Empty;
+
+                return text.Trim();
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
     }
 
     internal static class JsonElementExtensions

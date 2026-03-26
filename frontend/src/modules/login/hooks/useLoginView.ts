@@ -1,5 +1,6 @@
 import { checkTokenStatus, exchangeToken, getTelegramBotLink } from "@domains/auth/api/auth.api";
 import { useAuthStore } from "@domains/auth/store/auth.store";
+import { getSettings } from "@domains/user/api/user.api";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
@@ -30,10 +31,16 @@ export function useLoginView() {
 		return () => stopPolling();
 	}, []);
 
-	const redirectAfterLogin = () => {
-		const done = localStorage.getItem("onboarding_done");
-		const from = searchParams.get("from") ?? "/inbox";
-		router.replace(done ? from : "/onboarding");
+	const redirectAfterLogin = async (jwt: string) => {
+		setToken(jwt);
+
+		try {
+			const settings = await getSettings();
+			const from = searchParams.get("from") ?? "/inbox";
+			router.replace(settings.onboardingCompleted ? from : "/onboarding");
+		} catch {
+			router.replace("/onboarding");
+		}
 	};
 
 	const startPolling = (token: string) => {
@@ -45,8 +52,7 @@ export function useLoginView() {
 				stopPolling();
 
 				const jwt = await exchangeToken(token);
-				setToken(jwt);
-				redirectAfterLogin();
+				await redirectAfterLogin(jwt);
 			} catch {
 				stopPolling();
 				setStatus("error");

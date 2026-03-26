@@ -8,5 +8,6 @@ public record UpdateUserSettingsRequest(
     TimeOnly? MorningNotificationTime = null,
     bool? EveningNotificationsEnabled = null,
     TimeOnly? EveningNotificationTime = null,
-    bool? UseBuiltinCalendar = null
+    bool? UseBuiltinCalendar = null,
+    bool? OnboardingCompleted = null
 );

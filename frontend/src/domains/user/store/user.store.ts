@@ -7,6 +7,8 @@ import type { UserProfile, UserSettings, UpdateUserSettingsRequest } from "../ty
 interface UserState {
 	profile: UserProfile | null;
 	settings: UserSettings | null;
+	isLoading: boolean;
+	fetchError: string | null;
 	fetchAll: () => Promise<void>;
 	updateSettings: (data: UpdateUserSettingsRequest) => Promise<UserSettings | null>;
 }
@@ -14,12 +16,18 @@ interface UserState {
 export const useUserStore = create<UserState>((set) => ({
 	profile: null,
 	settings: null,
+	isLoading: false,
+	fetchError: null,
 
 	fetchAll: async () => {
+		set({ isLoading: true });
+
 		try {
 			const [profile, settings] = await Promise.all([getMe(), getSettings()]);
-			set({ profile, settings });
-		} catch {}
+			set({ profile, settings, isLoading: false, fetchError: null });
+		} catch {
+			set({ isLoading: false, fetchError: "Не удалось загрузить данные пользователя" });
+		}
 	},
 
 	updateSettings: async (data: UpdateUserSettingsRequest) => {

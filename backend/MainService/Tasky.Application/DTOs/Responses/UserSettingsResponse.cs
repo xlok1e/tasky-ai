@@ -8,5 +8,6 @@ public record UserSettingsResponse(
     TimeOnly MorningNotificationTime,
     bool EveningNotificationsEnabled,
     TimeOnly EveningNotificationTime,
-    bool UseBuiltinCalendar
+    bool UseBuiltinCalendar,
+    bool OnboardingCompleted
 );

@@ -224,3 +224,67 @@
 		opacity: 0;
 	}
 }
+
+@keyframes meshShift {
+	0% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	50% {
+		transform: translate3d(-2%, 2%, 0) scale(1.04);
+	}
+	100% {
+		transform: translate3d(3%, -2%, 0) scale(1.08);
+	}
+}
+
+@keyframes meshShift2 {
+	0% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	50% {
+		transform: translate3d(3%, -1%, 0) scale(1.03);
+	}
+	100% {
+		transform: translate3d(-3%, 3%, 0) scale(1.06);
+	}
+}
+
+@keyframes blobFloat1 {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	50% {
+		transform: translate3d(10px, -18px, 0);
+	}
+}
+
+@keyframes blobFloat2 {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	50% {
+		transform: translate3d(-16px, 12px, 0);
+	}
+}
+
+@keyframes blobFloat3 {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	50% {
+		transform: translate3d(10px, 10px, 0) scale(1.08);
+	}
+}
+
+@keyframes blobFloat4 {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	50% {
+		transform: translate3d(-12px, -8px, 0) scale(1.12);
+	}
+}

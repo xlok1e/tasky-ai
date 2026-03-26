@@ -113,6 +113,8 @@ builder.Services.AddAuthentication("Bearer")
 
 var app = builder.Build();
 
+await ApplyDatabaseMigrationsAsync(app);
+
 // Configure the HTTP request pipeline.
 app.UseSwagger();
 app.UseSwaggerUI(c =>
@@ -132,3 +134,11 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static async Task ApplyDatabaseMigrationsAsync(WebApplication app)
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    await dbContext.Database.MigrateAsync();
+}

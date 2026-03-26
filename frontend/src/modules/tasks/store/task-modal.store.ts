@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Task } from "../types/task.api.types";
+import type { Task } from "../types/task.types";
 
 export interface TaskModalPrefill {
 	startDate?: Date;

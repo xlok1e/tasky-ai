@@ -17,7 +17,8 @@ namespace Tasky.Infrastructure.Services;
 public class TelegramBotService(
     ITelegramBotClient botClient,
     IServiceScopeFactory scopeFactory,
-    ILogger<TelegramBotService> logger) : BackgroundService
+    ILogger<TelegramBotService> logger,
+    IAiAssistantService aiAssistantService) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,6 +56,13 @@ public class TelegramBotService(
         if (message.Contact is { } contact)
         {
             await ProcessPhoneNumber(bot, chatId, contact.PhoneNumber!, ct, message);
+            return;
+        }
+
+        // Обработка текстовых сообщений (ИИ-ассистент)
+        if (message.Text is { } userMessage && !string.IsNullOrWhiteSpace(userMessage))
+        {
+            await ProcessAiMessage(bot, chatId, userMessage, ct);
             return;
         }
 
@@ -175,6 +183,64 @@ public class TelegramBotService(
             $"✅ Авторизация успешна, {user.Username}!\n\nТеперь вы можете использовать TaskyAI через Telegram.",
             replyMarkup: new ReplyKeyboardRemove(),
             cancellationToken: ct);
+    }
+
+    private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // Найти пользователя по TelegramId
+        var user = await db.Users
+            .FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
+
+        if (user is null)
+        {
+            await bot.SendMessage(chatId,
+                "❌ Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
+                cancellationToken: ct);
+            return;
+        }
+
+        try
+        {
+            // Отправить сообщение о обработке
+            await bot.SendMessage(chatId,
+                "⏳ Обрабатываю ваше сообщение...",
+                cancellationToken: ct);
+
+            // Вызвать ИИ-ассистент с таймаутом
+            using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                var response = await aiAssistantService.ChatAsync(user.Id, userMessage);
+
+                // Сообщения уже сохранены в AiAssistantService.ChatAsync()
+                // Не нужно сохранять их здесь повторно
+
+                // Отправить ответ пользователю
+                await bot.SendMessage(chatId,
+                    response.Reply,
+                    cancellationToken: ct);
+
+                logger.LogInformation("AI message processed successfully for user {UserId}", user.Id);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("AI assistant request timeout for user {UserId}", user.Id);
+            await bot.SendMessage(chatId,
+                "⏱️ Время ожидания истекло. Пожалуйста, попробуйте снова.",
+                cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing AI message for user {UserId}: {ErrorMessage}", user.Id, ex.Message);
+            await bot.SendMessage(chatId,
+                "❌ Ошибка при обработке сообщения. Пожалуйста, попробуйте снова позже.",
+                cancellationToken: ct);
+        }
     }
 
     private async Task SendKeyboardMessage(ITelegramBotClient bot, long chatId, string text, CancellationToken ct)

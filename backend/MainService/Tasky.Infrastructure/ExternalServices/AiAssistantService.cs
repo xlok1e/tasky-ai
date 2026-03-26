@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 using Tasky.Application.Mappers;
@@ -17,6 +18,7 @@ namespace Tasky.Infrastructure.ExternalServices
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly AppDbContext _db;
         private readonly IGoogleCalendarService _googleCalendar;
+        private readonly ILogger<GptunnelService> _logger;
 
         private const string ModelName = "gemini-2.5-flash";
         private const string HttpClientName = "gptunnel";
@@ -26,11 +28,12 @@ namespace Tasky.Infrastructure.ExternalServices
 
         private const int QueryTasksMaxDisplay = 15;
 
-        public GptunnelService(IHttpClientFactory httpClientFactory, AppDbContext db, IGoogleCalendarService googleCalendar)
+        public GptunnelService(IHttpClientFactory httpClientFactory, AppDbContext db, IGoogleCalendarService googleCalendar, ILogger<GptunnelService> logger)
         {
             _httpClientFactory = httpClientFactory;
             _db = db;
             _googleCalendar = googleCalendar;
+            _logger = logger;
         }
 
         public async Task<AiChatResponse> ChatAsync(int userId, string message)
@@ -548,42 +551,75 @@ namespace Tasky.Infrastructure.ExternalServices
 
         public async Task<string> TranscribeAudioAsync(Stream audioStream, string fileName)
         {
-            if (audioStream == null || audioStream.Length == 0)
+            if (audioStream == null || (audioStream.CanSeek && audioStream.Length == 0))
                 return string.Empty;
 
             try
             {
                 using var form = new MultipartFormDataContent();
-                
-                // Не используем using для StreamContent, так как MultipartFormDataContent будет управлять жизненным циклом
+
                 var streamContent = new StreamContent(audioStream);
-                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/ogg");
-                
+                var mimeType = fileName.EndsWith(".oga", StringComparison.OrdinalIgnoreCase) ? "audio/ogg" : "audio/ogg";
+                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
+
                 form.Add(streamContent, "file", fileName);
                 form.Add(new StringContent("whisper-1"), "model");
                 form.Add(new StringContent("ru"), "language");
 
                 var client = _httpClientFactory.CreateClient(HttpClientName);
                 using var response = await client.PostAsync("v1/audio/transcriptions", form);
-                
+
                 if (!response.IsSuccessStatusCode)
                 {
+                    var errorBody = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("Whisper API returned {StatusCode}: {Body}", response.StatusCode, errorBody);
                     return string.Empty;
                 }
 
                 using var responseStream = await response.Content.ReadAsStreamAsync();
                 using var doc = await JsonDocument.ParseAsync(responseStream);
-                
+
                 var text = doc.RootElement.TryGetProperty("text", out var textEl)
                     ? textEl.GetString() ?? string.Empty
                     : string.Empty;
 
                 return text.Trim();
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error transcribing audio file {FileName}", fileName);
                 return string.Empty;
             }
+        }
+
+        public async Task<AiConversationHistoryListResponse> GetHistoryAsync(int userId, int page, int limit)
+        {
+            var query = _db.AiConversationHistory
+                .Where(h => h.UserId == userId)
+                .OrderBy(h => h.CreatedAt);
+
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)limit);
+
+            var messages = await query
+                .Skip((page - 1) * limit)
+                .Take(limit)
+                .Select(h => new AiConversationHistoryResponse
+                {
+                    Role = h.Role,
+                    Content = h.Content,
+                    CreatedAt = h.CreatedAt
+                })
+                .ToListAsync();
+
+            return new AiConversationHistoryListResponse
+            {
+                Messages = messages,
+                TotalCount = totalCount,
+                Page = page,
+                Limit = limit,
+                TotalPages = totalPages
+            };
         }
     }
 

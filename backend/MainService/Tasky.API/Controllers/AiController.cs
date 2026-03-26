@@ -4,9 +4,7 @@ using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
-using Tasky.Infrastructure.Persistence;
 using Swashbuckle.AspNetCore.Annotations;
-using Microsoft.EntityFrameworkCore;
 
 namespace Tasky.API.Controllers
 {
@@ -16,13 +14,11 @@ namespace Tasky.API.Controllers
 	public class AiController : ControllerBase
 	{
 		private readonly IAiAssistantService _aiService;
-		private readonly AppDbContext _db;
 		private readonly ILogger<AiController> _logger;
 
-		public AiController(IAiAssistantService aiService, AppDbContext db, ILogger<AiController> logger)
+		public AiController(IAiAssistantService aiService, ILogger<AiController> logger)
 		{
 			_aiService = aiService;
-			_db = db;
 			_logger = logger;
 		}
 
@@ -87,32 +83,8 @@ namespace Tasky.API.Controllers
 			var userId = GetUserId();
 			if (userId is null) return Unauthorized();
 
-			var query = _db.AiConversationHistory
-				.Where(h => h.UserId == userId.Value)
-				.OrderBy(h => h.CreatedAt); // Хронологический порядок
-
-			var totalCount = await query.CountAsync();
-			var totalPages = (int)Math.Ceiling(totalCount / (double)limit);
-
-			var messages = await query
-				.Skip((page - 1) * limit)
-				.Take(limit)
-				.Select(h => new AiConversationHistoryResponse
-				{
-					Role = h.Role,
-					Content = h.Content,
-					CreatedAt = h.CreatedAt
-				})
-				.ToListAsync();
-
-			return Ok(new AiConversationHistoryListResponse
-			{
-				Messages = messages,
-				TotalCount = totalCount,
-				Page = page,
-				Limit = limit,
-				TotalPages = totalPages
-			});
+			var result = await _aiService.GetHistoryAsync(userId.Value, page, limit);
+			return Ok(result);
 		}
 
 		private int? GetUserId()

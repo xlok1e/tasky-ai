@@ -1,12 +1,21 @@
 import { create } from "zustand";
+import type { ListResponse } from "@modules/lists/types/list.types";
 
-interface ListsModalStore {
-  isOpen: boolean;
-  onOpen: () => void;
-  onClose: () => void;
+interface ListsModalState {
+	isOpen: boolean;
+	editingList: ListResponse | null;
+	onOpen: () => void;
+	openForEdit: (list: ListResponse) => void;
+	onClose: () => void;
 }
-export const useListsModal = create<ListsModalStore>((set) => ({
-  isOpen: false,
-  onOpen: () => set({ isOpen: true }),
-  onClose: () => set({ isOpen: false }),
+
+export const useListsModal = create<ListsModalState>((set) => ({
+	isOpen: false,
+	editingList: null,
+
+	onOpen: () => set({ isOpen: true, editingList: null }),
+
+	openForEdit: (list: ListResponse) => set({ isOpen: true, editingList: list }),
+
+	onClose: () => set({ isOpen: false, editingList: null }),
 }));

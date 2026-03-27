@@ -6,7 +6,7 @@ import { TasksInitializer } from "@modules/tasks/components/TasksInitializer";
 import { ListsInitializer } from "@modules/lists/components/ListsInitializer";
 import { GoogleInitializer } from "@/domains/google/components/GoogleInitializer";
 import { UserInitializer } from "@/domains/user/components/UserInitializer";
-import { ListsModal } from "@modules/lists";
+import { DeleteListModal, ListsModal } from "@modules/lists";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <RightSidebar />
       <TaskModal />
       <ListsModal />
+      <DeleteListModal />
     </div>
   );
 }

@@ -6,13 +6,7 @@ import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
 import { Switch } from "@shared/ui/switch";
 import { Label } from "@shared/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@shared/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { useAuthStore } from "@domains/auth/store/auth.store";
 import { useUserStore } from "@/domains/user/store/user.store";
 import { useGoogleStore } from "@/domains/google/store/google.store";
@@ -20,6 +14,8 @@ import { ThemeSwitcher } from "@components/ThemeSwitcher/theme-switcher";
 import { RefreshCcw } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 import { toast } from "sonner";
+import { getGoogleAuthUrl } from "@/domains/google/api/google.api";
+import { useTasksStore } from "@modules/tasks/store/tasks.store";
 
 const TIMEZONES = [
 	"Europe/Moscow",
@@ -56,6 +52,7 @@ export function SettingsView() {
 	const [morningEnabled, setMorningEnabled] = useState(false);
 	const [eveningEnabled, setEveningEnabled] = useState(false);
 	const [isSavingWorkTime, setIsSavingWorkTime] = useState(false);
+	const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
 
 	useEffect(() => {
 		if (!settings) return;
@@ -92,9 +89,23 @@ export function SettingsView() {
 		await updateSettings({ eveningNotificationsEnabled: value });
 	};
 
+	const handleConnectGoogle = async () => {
+		setIsGoogleAuthLoading(true);
+		try {
+			const authUrl = await getGoogleAuthUrl(window.location.href);
+			window.location.href = authUrl;
+		} catch {
+			toast.error("Не удалось начать авторизацию Google");
+			setIsGoogleAuthLoading(false);
+		}
+	};
+
+	const fetchTasks = useTasksStore((s) => s.fetchTasks);
+
 	const handleDisconnectGoogle = async () => {
 		await disconnect();
 		await updateSettings({ useBuiltinCalendar: true });
+		await fetchTasks();
 		toast.success("Google Calendar отключён");
 	};
 
@@ -110,8 +121,7 @@ export function SettingsView() {
 				<div className="flex flex-col gap-1 text-sm">
 					{profile?.telegramUsername && (
 						<p>
-							Telegram:{" "}
-							<span className="font-medium">@{profile.telegramUsername}</span>
+							Telegram: <span className="font-medium">@{profile.telegramUsername}</span>
 						</p>
 					)}
 					{profile?.phoneNumber && (
@@ -121,14 +131,12 @@ export function SettingsView() {
 					)}
 					{profile?.createdAt && (
 						<p className="text-muted-foreground">
-							Зарегистрирован:{" "}
-							{new Date(profile.createdAt).toLocaleDateString("ru-RU")}
+							Зарегистрирован: {new Date(profile.createdAt).toLocaleDateString("ru-RU")}
 						</p>
 					)}
 					{!profile && user && (
 						<p>
-							Вы вошли как:{" "}
-							<span className="font-medium">{user.username ?? "—"}</span>
+							Вы вошли как: <span className="font-medium">{user.username ?? "—"}</span>
 						</p>
 					)}
 				</div>
@@ -136,9 +144,7 @@ export function SettingsView() {
 
 			{/* Theme */}
 			<section className="flex flex-col gap-3">
-				<h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-					Тема
-				</h2>
+				<h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Тема</h2>
 				<ThemeSwitcher />
 			</section>
 
@@ -248,7 +254,17 @@ export function SettingsView() {
 						</div>
 					</div>
 				) : (
-					<p className="text-sm text-muted-foreground">Google Calendar не подключён</p>
+					<div className="flex flex-col gap-2">
+						<p className="text-sm text-muted-foreground">Google Calendar не подключён</p>
+						<Button
+							variant="outline"
+							className="w-fit gap-2"
+							onClick={handleConnectGoogle}
+							disabled={isGoogleAuthLoading}
+						>
+							{isGoogleAuthLoading ? "Подключение..." : "Войти через Google"}
+						</Button>
+					</div>
 				)}
 			</section>
 
@@ -263,4 +279,3 @@ export function SettingsView() {
 }
 
 export default SettingsView;
-

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { fetchListTasks } from "@modules/lists/api/lists.api";
-import { mapTaskResponseToTask } from "@modules/tasks/types/task.api.types";
-import type { Task } from "@modules/tasks/types/task.api.types";
+import { mapTaskResponseToTask } from "@modules/tasks/utils/tasks.utils";
+import type { Task } from "@modules/tasks/types/task.types";
 
 interface UseListTasksResult {
 	tasks: Task[];

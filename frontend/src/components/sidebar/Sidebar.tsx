@@ -80,35 +80,35 @@ export function Sidebar() {
 				</nav>
 
 				{!isConnected && (
-				<div
-					className={cn(
-						" transition-all duration-0",
-						isCollapsed ? "max-h-0 opacity-0" : "max-h-96 opacity-100",
-					)}
-				>
-					<div className="h-px bg-border my-4 -mx-[18px] ml-[1px]" />
+					<div
+						className={cn(
+							" transition-all duration-0",
+							isCollapsed ? "max-h-0 opacity-0" : "max-h-96 opacity-100",
+						)}
+					>
+						<div className="h-px bg-border my-4 -mx-[18px] ml-[1px]" />
 
-					<div className="flex items-center w-full justify-between px-2.5 pr-0 mb-[8px]">
-						<div className="flex items-center gap-2">
-							<LayoutList className="size-[18px]" strokeWidth={1.5} />
-							<label className="text-[18px] cursor-pointer whitespace-nowrap">Списки</label>
+						<div className="flex items-center w-full justify-between px-2.5 pr-0 mb-[8px]">
+							<div className="flex items-center gap-2">
+								<LayoutList className="size-[18px]" strokeWidth={1.5} />
+								<label className="text-[18px] cursor-pointer whitespace-nowrap">Списки</label>
+							</div>
+							<Button className="w-[32px] h-[32px] rounded-[6px]" variant="ghost">
+								<CirclePlus className="size-[18px]" strokeWidth={1.5} />
+							</Button>
 						</div>
-						<Button className="w-[32px] h-[32px] rounded-[6px]" variant="ghost">
-							<CirclePlus className="size-[18px]" strokeWidth={1.5} />
-						</Button>
-					</div>
 
-					<div className="flex flex-col gap-1.5">
-						{lists.map((list) => (
-							<SidebarListItem
-								key={list.id}
-								list={list}
-								isActive={pathname === `/lists/${list.id}`}
-								isCollapsed={isCollapsed}
-							/>
-						))}
+						<div className="flex flex-col gap-1.5">
+							{lists.map((list) => (
+								<SidebarListItem
+									key={list.id}
+									list={list}
+									isActive={pathname === `/lists/${list.id}`}
+									isCollapsed={isCollapsed}
+								/>
+							))}
+						</div>
 					</div>
-				</div>
 				)}
 			</div>
 
@@ -138,8 +138,10 @@ export function Sidebar() {
 						</span>
 					</button>
 				)}
-				<Link
-					href="/"
+				<a
+					href="https://t.me/aitaskybot"
+					target="_blank"
+					rel="noopener noreferrer"
 					className={cn(
 						"flex items-center rounded-[6px] transition-colors overflow-hidden hover:bg-accent/50",
 						isCollapsed
@@ -156,7 +158,7 @@ export function Sidebar() {
 					>
 						Перейти в Telegram
 					</span>
-				</Link>
+				</a>
 				<Link
 					href="/settings"
 					className={cn(

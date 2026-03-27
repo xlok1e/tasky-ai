@@ -19,6 +19,8 @@ export function TaskList({
 	const storeTasks = useTasksStore((s) => s.tasks);
 	const storeIsLoading = useTasksStore((s) => s.isLoading);
 	const storeError = useTasksStore((s) => s.error);
+	const hasMore = useTasksStore((s) => s.hasMore);
+	const fetchMoreTasks = useTasksStore((s) => s.fetchMoreTasks);
 	const openNew = useTaskModal((s) => s.openNew);
 	const listName = useListsStore((s) =>
 		listId === undefined
@@ -90,6 +92,17 @@ export function TaskList({
 				<Separator className="bg-border" />
 				<TaskListSection title="Выполнено" tasks={completedTasks} />
 			</div>
+
+			{hasMore && (
+				<Button
+					variant="outline"
+					className="w-fit mx-auto"
+					onClick={fetchMoreTasks}
+					disabled={isLoading}
+				>
+					{isLoading ? "Загрузка..." : "Показать ещё"}
+				</Button>
+			)}
 		</div>
 	);
 }

@@ -246,6 +246,12 @@ public class GoogleController : ControllerBase
         if (state is not null)
             _db.GoogleSyncStates.Remove(state);
 
+        // Remove all tasks imported from Google Calendar
+        var googleTasks = await _db.Tasks
+            .Where(t => t.UserId == UserId && t.GoogleEventId != null)
+            .ToListAsync();
+        _db.Tasks.RemoveRange(googleTasks);
+
         var settings = await _db.UserSettings.FirstOrDefaultAsync(s => s.UserId == UserId);
         if (settings is not null)
             settings.UseBuiltinCalendar = true;

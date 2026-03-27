@@ -6,6 +6,7 @@ export interface SidebarItem {
 	label: string;
 	icon: LucideIcon;
 	href: string;
+	disabled?: boolean;
 }
 
 export const SIDEBAR_ITEMS: SidebarItem[] = [
@@ -26,5 +27,6 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
 		label: "Статистика",
 		icon: ChartNoAxesCombined,
 		href: "/statistics",
+		disabled: true,
 	},
 ];

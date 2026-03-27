@@ -5,8 +5,18 @@ import type {
 	UpdateTaskRequest,
 } from "@modules/tasks/types/task.api.types";
 
-export async function fetchTasks(): Promise<TaskResponse[]> {
-	const response = await apiClient.get<TaskResponse[]>("/api/tasks");
+interface FetchTasksParams {
+	offset?: number;
+	limit?: number;
+}
+
+export async function fetchTasks(params?: FetchTasksParams): Promise<TaskResponse[]> {
+	const response = await apiClient.get<TaskResponse[]>("/api/tasks", {
+		params: {
+			offset: params?.offset,
+			limit: params?.limit,
+		},
+	});
 	return response.data;
 }
 

@@ -12,12 +12,16 @@ import { TaskPriority, TaskStatus } from "../types/task.enums";
 import { AddTaskParams, Task } from "../types/task.types";
 import { mapTaskResponseToTask } from "../utils/tasks.utils";
 
+const TASKS_PAGE_SIZE = 20;
+
 interface TasksState {
 	tasks: Task[];
 	isLoading: boolean;
 	error: string | null;
+	hasMore: boolean;
 
 	fetchTasks: () => Promise<void>;
+	fetchMoreTasks: () => Promise<void>;
 	_addOptimisticTask: (task: Task) => void;
 	_removeOptimisticTask: (id: number) => void;
 	addTask: (params: AddTaskParams) => Promise<void>;
@@ -61,14 +65,36 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 	tasks: [],
 	isLoading: false,
 	error: null,
+	hasMore: true,
 
 	fetchTasks: async () => {
 		set({ isLoading: true, error: null });
 		try {
-			const data = await apiFetchTasks();
-			set({ tasks: data.map(mapTaskResponseToTask), isLoading: false });
+			const data = await apiFetchTasks({ offset: 0, limit: TASKS_PAGE_SIZE });
+			set({
+				tasks: data.map(mapTaskResponseToTask),
+				isLoading: false,
+				hasMore: data.length >= TASKS_PAGE_SIZE,
+			});
 		} catch {
 			set({ isLoading: false, error: "Не удалось загрузить задачи" });
+		}
+	},
+
+	fetchMoreTasks: async () => {
+		const { tasks, hasMore, isLoading } = get();
+		if (!hasMore || isLoading) return;
+		set({ isLoading: true });
+		try {
+			const data = await apiFetchTasks({ offset: tasks.length, limit: TASKS_PAGE_SIZE });
+			const newTasks = data.map(mapTaskResponseToTask);
+			set((state) => ({
+				tasks: [...state.tasks, ...newTasks],
+				isLoading: false,
+				hasMore: data.length >= TASKS_PAGE_SIZE,
+			}));
+		} catch {
+			set({ isLoading: false });
 		}
 	},
 

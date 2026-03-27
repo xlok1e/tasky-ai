@@ -13,3 +13,21 @@ export interface ListTasksResponse {
 	totalCount: number;
 	tasks: TaskResponse[];
 }
+
+export interface CreateListRequest {
+	name: string;
+	colorHex: string;
+}
+
+export interface CreateListResponse {
+	id: number;
+	name: string;
+	colorHex: string;
+	uncompletedTasksCount: number;
+	createdAt: string;
+}
+
+export interface UpdateListRequest {
+	name: string;
+	colorHex: string;
+}

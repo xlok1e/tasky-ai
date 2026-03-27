@@ -6,6 +6,7 @@ import { TasksInitializer } from "@modules/tasks/components/TasksInitializer";
 import { ListsInitializer } from "@modules/lists/components/ListsInitializer";
 import { GoogleInitializer } from "@/domains/google/components/GoogleInitializer";
 import { UserInitializer } from "@/domains/user/components/UserInitializer";
+import { DeleteListModal, ListsModal } from "@modules/lists";
 import { GoogleSyncObserver } from "@/domains/google/components/GoogleSyncObserver";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +22,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 			<main className="flex-1 overflow-y-auto p-6">{children}</main>
 			<RightSidebar />
 			<TaskModal />
+		 <ListsModal />
+      <DeleteListModal />
 		</div>
 	);
-}

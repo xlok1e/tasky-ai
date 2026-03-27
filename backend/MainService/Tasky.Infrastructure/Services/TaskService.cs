@@ -167,18 +167,23 @@ namespace Tasky.Infrastructure.Services
         public async Task<IEnumerable<TaskSummaryResponse>> GetAllAsync(
             int userId,
             int? listId,
+            bool inboxOnly,
             Tasky.Domain.Enums.TaskPriority? priority,
             DateTime? dueDate,
             Tasky.Domain.Enums.TaskCompletionStatus? status,
             int? offset,
             int? limit,
-            string? sort = "deadline")
+            string? sort = "deadline",
+            string? dateOrder = null,
+            string? priorityOrder = null)
         {
             var query = _db.Tasks
                 .Include(t => t.List)
                 .Where(t => t.UserId == userId);
 
-            if (listId.HasValue)
+            if (inboxOnly)
+                query = query.Where(t => t.ListId == null);
+            else if (listId.HasValue)
                 query = query.Where(t => t.ListId == listId.Value);
 
             if (priority.HasValue)
@@ -190,12 +195,7 @@ namespace Tasky.Infrastructure.Services
             if (status.HasValue)
                 query = query.Where(t => t.Status == status.Value);
 
-            query = (sort?.ToLower() ?? "deadline") switch
-            {
-                "priority" => query.OrderByDescending(t => t.Priority),
-                "created"  => query.OrderByDescending(t => t.CreatedAt),
-                _          => query.OrderBy(t => t.Deadline ?? DateTime.MaxValue)
-            };
+            query = ApplySorting(query, sort, dateOrder, priorityOrder);
 
             if (offset.HasValue)
                 query = query.Skip(offset.Value);
@@ -206,6 +206,67 @@ namespace Tasky.Infrastructure.Services
             return await query
                 .Select(t => t.ToSummaryResponse())
                 .ToListAsync();
+        }
+
+        private static IQueryable<TaskItem> ApplySorting(
+            IQueryable<TaskItem> query,
+            string? sort,
+            string? dateOrder,
+            string? priorityOrder)
+        {
+            IOrderedQueryable<TaskItem>? orderedQuery = null;
+
+            if (!string.IsNullOrWhiteSpace(dateOrder))
+                orderedQuery = ApplyEffectiveDateOrdering(query, dateOrder);
+
+            if (!string.IsNullOrWhiteSpace(priorityOrder))
+                orderedQuery = orderedQuery is null
+                    ? ApplyPriorityOrdering(query, priorityOrder)
+                    : ApplyPriorityOrdering(orderedQuery, priorityOrder);
+
+            if (orderedQuery is not null)
+                return orderedQuery.ThenByDescending(task => task.CreatedAt);
+
+            return (sort?.ToLowerInvariant() ?? "deadline") switch
+            {
+                "priority" => query.OrderByDescending(task => task.Priority)
+                    .ThenBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
+                    .ThenBy(task => task.Deadline ?? task.EndAt ?? task.StartAt)
+                    .ThenByDescending(task => task.CreatedAt),
+                "created" => query.OrderByDescending(task => task.CreatedAt),
+                _ => query.OrderBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
+                    .ThenBy(task => task.Deadline ?? task.EndAt ?? task.StartAt)
+                    .ThenByDescending(task => task.CreatedAt),
+            };
+        }
+
+        private static IOrderedQueryable<TaskItem> ApplyEffectiveDateOrdering(
+            IQueryable<TaskItem> query,
+            string dateOrder)
+        {
+            return dateOrder.Equals("desc", StringComparison.OrdinalIgnoreCase)
+                ? query.OrderBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
+                    .ThenByDescending(task => task.Deadline ?? task.EndAt ?? task.StartAt)
+                : query.OrderBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
+                    .ThenBy(task => task.Deadline ?? task.EndAt ?? task.StartAt);
+        }
+
+        private static IOrderedQueryable<TaskItem> ApplyPriorityOrdering(
+            IQueryable<TaskItem> query,
+            string priorityOrder)
+        {
+            return priorityOrder.Equals("asc", StringComparison.OrdinalIgnoreCase)
+                ? query.OrderBy(task => task.Priority)
+                : query.OrderByDescending(task => task.Priority);
+        }
+
+        private static IOrderedQueryable<TaskItem> ApplyPriorityOrdering(
+            IOrderedQueryable<TaskItem> query,
+            string priorityOrder)
+        {
+            return priorityOrder.Equals("asc", StringComparison.OrdinalIgnoreCase)
+                ? query.ThenBy(task => task.Priority)
+                : query.ThenByDescending(task => task.Priority);
         }
 
         public async Task<bool> DeleteAsync(int userId, int taskId)

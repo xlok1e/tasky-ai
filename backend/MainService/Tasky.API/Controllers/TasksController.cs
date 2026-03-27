@@ -45,12 +45,15 @@ namespace Tasky.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<TaskSummaryResponse>>> GetAll(
             [FromQuery] int? listId,
+            [FromQuery] bool inboxOnly = false,
             [FromQuery] string? priority,
             [FromQuery] DateTime? dueDate,
             [FromQuery] string? status,
             [FromQuery] int? offset,
             [FromQuery] int? limit,
-            [FromQuery] string? sort = "deadline")
+            [FromQuery] string? sort = "deadline",
+            [FromQuery] string? dateOrder = null,
+            [FromQuery] string? priorityOrder = null)
         {
             TaskPriority? parsedPriority = null;
             if (priority is not null)
@@ -74,7 +77,24 @@ namespace Tasky.API.Controllers
             if (limit.HasValue && (limit.Value <= 0 || limit.Value > 500))
                 return BadRequest(new { error = "limit должен быть в диапазоне от 1 до 500." });
 
-            var list = await _taskService.GetAllAsync(UserId, listId, parsedPriority, dueDate, parsedStatus, offset, limit, sort);
+            if (!IsValidSortDirection(dateOrder))
+                return BadRequest(new { error = "dateOrder должен быть 'asc' или 'desc'." });
+
+            if (!IsValidSortDirection(priorityOrder))
+                return BadRequest(new { error = "priorityOrder должен быть 'asc' или 'desc'." });
+
+            var list = await _taskService.GetAllAsync(
+                UserId,
+                listId,
+                inboxOnly,
+                parsedPriority,
+                dueDate,
+                parsedStatus,
+                offset,
+                limit,
+                sort,
+                dateOrder,
+                priorityOrder);
             return Ok(list);
         }
 
@@ -83,6 +103,13 @@ namespace Tasky.API.Controllers
         {
             var removed = await _taskService.DeleteAsync(UserId, id);
             return removed ? NoContent() : NotFound();
+        }
+
+        private static bool IsValidSortDirection(string? direction)
+        {
+            return direction is null
+                   || direction.Equals("asc", StringComparison.OrdinalIgnoreCase)
+                   || direction.Equals("desc", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

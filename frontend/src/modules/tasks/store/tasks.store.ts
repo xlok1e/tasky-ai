@@ -19,6 +19,7 @@ interface TasksState {
 	isLoading: boolean;
 	error: string | null;
 	hasMore: boolean;
+	dataVersion: number;
 
 	fetchTasks: () => Promise<void>;
 	fetchMoreTasks: () => Promise<void>;
@@ -66,6 +67,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 	isLoading: false,
 	error: null,
 	hasMore: true,
+	dataVersion: 0,
 
 	fetchTasks: async () => {
 		set({ isLoading: true, error: null });
@@ -75,6 +77,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 				tasks: data.map(mapTaskResponseToTask),
 				isLoading: false,
 				hasMore: data.length >= TASKS_PAGE_SIZE,
+				dataVersion: get().dataVersion + 1,
 			});
 		} catch {
 			set({ isLoading: false, error: "Не удалось загрузить задачи" });
@@ -124,7 +127,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		try {
 			const created = await apiCreateTask(request);
 			const task = { ...mapTaskResponseToTask(created), ...(isAllDay && { isAllDay: true }) };
-			set((state) => ({ tasks: [task, ...state.tasks] }));
+			set((state) => ({ tasks: [task, ...state.tasks], dataVersion: state.dataVersion + 1 }));
 
 			// Background sync if Google Calendar is connected
 			const googleStore = useGoogleStore.getState();
@@ -150,6 +153,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			const updatedTask = mapTaskResponseToTask(updated);
 			set((state) => ({
 				tasks: state.tasks.map((t) => (t.id === task.id ? updatedTask : t)),
+				dataVersion: state.dataVersion + 1,
 			}));
 			toastMessage.showSuccess(
 				task.isCompleted ? "Выполнение задачи отменено" : "Задача успешно выполнена",
@@ -183,6 +187,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			}
 			set((state) => ({
 				tasks: state.tasks.map((t) => (t.id === id ? updatedTask : t)),
+				dataVersion: state.dataVersion + 1,
 			}));
 		} catch {
 			set((state) => ({
@@ -197,6 +202,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
 		try {
 			await apiDeleteTask(id);
+			set((state) => ({ dataVersion: state.dataVersion + 1 }));
 		} catch {
 			set({ tasks: prev });
 			toastMessage.showError("Не удалось удалить задачу");

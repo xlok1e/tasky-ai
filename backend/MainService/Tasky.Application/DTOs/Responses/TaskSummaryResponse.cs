@@ -10,6 +10,7 @@ public record TaskSummaryResponse(
     string? Description,
     DateTime? StartAt,
     DateTime? EndAt,
+    DateTime? Deadline,
     bool IsAllDay,
     TaskPriority Priority,
     TaskCompletionStatus Status,

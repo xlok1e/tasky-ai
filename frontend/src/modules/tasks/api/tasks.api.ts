@@ -6,15 +6,23 @@ import type {
 } from "@modules/tasks/types/task.api.types";
 
 interface FetchTasksParams {
+	listId?: number;
+	inboxOnly?: boolean;
 	offset?: number;
 	limit?: number;
+	dateOrder?: "asc" | "desc";
+	priorityOrder?: "asc" | "desc";
 }
 
 export async function fetchTasks(params?: FetchTasksParams): Promise<TaskResponse[]> {
 	const response = await apiClient.get<TaskResponse[]>("/api/tasks", {
 		params: {
+			listId: params?.listId,
+			inboxOnly: params?.inboxOnly,
 			offset: params?.offset,
 			limit: params?.limit,
+			dateOrder: params?.dateOrder,
+			priorityOrder: params?.priorityOrder,
 		},
 	});
 	return response.data;

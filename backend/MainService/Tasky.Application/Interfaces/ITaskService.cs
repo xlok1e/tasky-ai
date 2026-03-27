@@ -12,12 +12,15 @@ namespace Tasky.Application.Interfaces
         Task<IEnumerable<TaskSummaryResponse>> GetAllAsync(
             int userId,
             int? listId,
+            bool inboxOnly,
             TaskPriority? priority,
             DateTime? dueDate,
             TaskCompletionStatus? status,
             int? offset,
             int? limit,
-            string? sort = "deadline");
+            string? sort = "deadline",
+            string? dateOrder = null,
+            string? priorityOrder = null);
         Task<bool> DeleteAsync(int userId, int taskId);
     }
 }

@@ -13,6 +13,7 @@ import { AddTaskParams, Task } from "../types/task.types";
 import { mapTaskResponseToTask } from "../utils/tasks.utils";
 
 const TASKS_PAGE_SIZE = 20;
+const TASKS_FETCH_BATCH_SIZE = 200;
 
 interface TasksState {
 	tasks: Task[];
@@ -62,6 +63,26 @@ function buildRequest(task: Task): UpdateTaskPayload {
 	};
 }
 
+async function fetchAllTasks(): Promise<Task[]> {
+	const allTasks: Task[] = [];
+	let offset = 0;
+
+	while (true) {
+		const response = await apiFetchTasks({
+			offset,
+			limit: TASKS_FETCH_BATCH_SIZE,
+		});
+
+		allTasks.push(...response.map(mapTaskResponseToTask));
+
+		if (response.length < TASKS_FETCH_BATCH_SIZE) {
+			return allTasks;
+		}
+
+		offset += response.length;
+	}
+}
+
 export const useTasksStore = create<TasksState>((set, get) => ({
 	tasks: [],
 	isLoading: false,
@@ -72,11 +93,11 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 	fetchTasks: async () => {
 		set({ isLoading: true, error: null });
 		try {
-			const data = await apiFetchTasks({ offset: 0, limit: TASKS_PAGE_SIZE });
+			const data = await fetchAllTasks();
 			set({
-				tasks: data.map(mapTaskResponseToTask),
+				tasks: data,
 				isLoading: false,
-				hasMore: data.length >= TASKS_PAGE_SIZE,
+				hasMore: false,
 				dataVersion: get().dataVersion + 1,
 			});
 		} catch {

@@ -44,13 +44,13 @@ namespace Tasky.API.Controllers
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<TaskSummaryResponse>>> GetAll(
-            [FromQuery] int? listId,
+            [FromQuery] int? listId = null,
             [FromQuery] bool inboxOnly = false,
-            [FromQuery] string? priority,
-            [FromQuery] DateTime? dueDate,
-            [FromQuery] string? status,
-            [FromQuery] int? offset,
-            [FromQuery] int? limit,
+            [FromQuery] string? priority = null,
+            [FromQuery] DateTime? dueDate = null,
+            [FromQuery] string? status = null,
+            [FromQuery] int? offset = null,
+            [FromQuery] int? limit = null,
             [FromQuery] string? sort = "deadline",
             [FromQuery] string? dateOrder = null,
             [FromQuery] string? priorityOrder = null)

@@ -57,7 +57,7 @@ interface CalendarEventProps {
 function CalendarEventContent({ event }: CalendarEventProps) {
 	const task = event.resource;
 	const durationMs = event.end.getTime() - event.start.getTime();
-	const isTall = durationMs >= 45 * 60 * 1000; // 45 min ≈ 60px (80px/hour from CSS)
+	const isTall = durationMs >= 45 * 60 * 1000;
 	const timeStr =
 		!event.allDay && isTall
 			? `${format(event.start, "HH:mm")} — ${format(event.end, "HH:mm")}`

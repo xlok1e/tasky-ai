@@ -7,9 +7,12 @@ import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import "./big-calendar.css";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Clock } from "lucide-react";
+import { Clock, Trash2 } from "lucide-react";
 import type { CalendarProps } from "react-big-calendar";
 import type { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
+import { useContextMenu } from "@shared/lib/use-context-menu";
+import { Button } from "@shared/ui/button";
+import { ContextActionsPopover } from "@shared/ui/context-actions-popover";
 import type { Task } from "@modules/tasks/types/task.types";
 import { getContrastColor, hexToRgba } from "@modules/calendar/utils/calendar.utils";
 
@@ -85,6 +88,7 @@ interface BigCalendarProps {
 	onSelectEvent: (event: CalendarTaskEvent) => void;
 	onEventDrop: (args: EventInteractionArgs<CalendarTaskEvent>) => void;
 	onEventResize: (args: EventInteractionArgs<CalendarTaskEvent>) => void;
+	onDeleteEvent: (event: CalendarTaskEvent) => void;
 }
 
 export function BigCalendar({
@@ -96,8 +100,11 @@ export function BigCalendar({
 	onSelectEvent,
 	onEventDrop,
 	onEventResize,
+	onDeleteEvent,
 }: BigCalendarProps) {
 	const calendarRef = useRef<HTMLDivElement>(null);
+	const contextMenu = useContextMenu();
+	const selectedEventRef = useRef<CalendarTaskEvent | null>(null);
 	const scrollLockRef = useRef<{
 		locked: boolean;
 		savedScrollTop: number;
@@ -129,6 +136,22 @@ export function BigCalendar({
 		lock.mouseUpHandler = null;
 		lock.timeContent = null;
 	}, []);
+
+	const handleEventContextMenu = useCallback(
+		(event: React.MouseEvent<HTMLElement>, calendarEvent: CalendarTaskEvent) => {
+			selectedEventRef.current = calendarEvent;
+			contextMenu.openFromMouseEvent(event);
+		},
+		[contextMenu],
+	);
+
+	const handleDeleteContextEvent = useCallback(() => {
+		if (!selectedEventRef.current) return;
+
+		onDeleteEvent(selectedEventRef.current);
+		selectedEventRef.current = null;
+		contextMenu.close();
+	}, [contextMenu, onDeleteEvent]);
 
 	const lockScroll = useCallback(() => {
 		const container = calendarRef.current;
@@ -226,9 +249,13 @@ export function BigCalendar({
 					</div>
 				),
 			},
-			event: CalendarEventContent,
+			event: ({ event }: CalendarEventProps) => (
+				<div className="h-full" onContextMenu={(mouseEvent) => handleEventContextMenu(mouseEvent, event)}>
+					<CalendarEventContent event={event} />
+				</div>
+			),
 		}),
-		[],
+		[handleEventContextMenu],
 	);
 
 	return (
@@ -260,6 +287,24 @@ export function BigCalendar({
 				timeslots={12}
 				components={components}
 			/>
+
+			<ContextActionsPopover
+				open={contextMenu.isOpen}
+				position={contextMenu.position}
+				onOpenChange={contextMenu.setIsOpen}
+			>
+				<div className="flex flex-col gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						className="w-full justify-start px-3 text-destructive hover:text-destructive"
+						onClick={handleDeleteContextEvent}
+					>
+						<Trash2 className="size-4" />
+						Удалить
+					</Button>
+				</div>
+			</ContextActionsPopover>
 		</div>
 	);
 }

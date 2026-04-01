@@ -24,6 +24,7 @@ export function CalendarView() {
 		handleSelectEvent,
 		handleEventDrop,
 		handleEventResize,
+		handleDeleteEvent,
 		handleAddTask,
 	} = useCalendarView(view);
 
@@ -87,6 +88,7 @@ export function CalendarView() {
 					onSelectEvent={handleSelectEvent}
 					onEventDrop={handleEventDrop}
 					onEventResize={handleEventResize}
+					onDeleteEvent={handleDeleteEvent}
 				/>
 			</div>
 		</div>

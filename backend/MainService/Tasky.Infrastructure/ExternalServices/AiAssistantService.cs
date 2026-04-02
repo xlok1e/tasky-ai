@@ -139,7 +139,7 @@ namespace Tasky.Infrastructure.ExternalServices
             {"reply":"<Russian text>","intent":<null|"create_task"|"update_task"|"query_tasks"|"sync_google"|"disconnect_google">,"pendingTask":<object|null>,"pendingUpdate":<object|null>,"pendingQuery":<object|null>}
 
             pendingTask schema:  {"title":"","description":null,"startAt":null,"endAt":null,"isAllDay":false,"priority":"Low","listName":null}
-            pendingUpdate schema: {"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null}
+            pendingUpdate schema: {"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null,"listName":null}
             pendingQuery schema:  {"dateFrom":null,"dateTo":null,"listName":null,"priority":null,"status":null}
 
             === INTENT RULES ===
@@ -172,6 +172,7 @@ namespace Tasky.Infrastructure.ExternalServices
               Example: «Перенести задачу «Созвон» на 28 марта в 15:00. Подтверждаете?»
             - Set ONLY changed fields; all other fields = null.
             - status values: "Completed" | "InProgress" | null.
+            - listName: exact name from Lists above if user wants to move task to another list, otherwise null.
 
             [Delete task request]:
             - ALWAYS refuse. reply = «К сожалению, я не могу удалить задачу в целях безопасности. Удалить задачу можно вручную в приложении.»
@@ -389,7 +390,8 @@ namespace Tasky.Infrastructure.ExternalServices
                 : null,
             Status = el.GetStringOrNull("status") is { } s
                 ? Enum.TryParse<TaskCompletionStatus>(s, ignoreCase: true, out var st) ? st : null
-                : null
+                : null,
+            ListName = el.GetStringOrNull("listName")
         };
 
 
@@ -604,6 +606,14 @@ namespace Tasky.Infrastructure.ExternalServices
                     task.CompletedAt = DateTime.UtcNow;
                 else if (wasCompleted && task.Status != TaskCompletionStatus.Completed)
                     task.CompletedAt = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(pending.ListName))
+            {
+                var listId = await ResolveListIdAsync(userId, pending.ListName);
+                if (listId is null)
+                    throw new KeyNotFoundException($"Список «{pending.ListName}» не найден.");
+                task.ListId = listId;
             }
 
             await _db.SaveChangesAsync();

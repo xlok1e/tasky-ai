@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -101,6 +100,12 @@ public class TelegramBotService(
                 return;
             }
 
+            if (userMessage == "📊 Статистика" || userMessage == "/stats")
+            {
+                await SendStatisticsMessage(bot, chatId, user, ct);
+                return;
+            }
+
             // ИИ-ассистент
             await ProcessAiMessage(bot, chatId, userMessage, user, ct);
             return;
@@ -143,36 +148,28 @@ public class TelegramBotService(
     }
 
     private async Task SendHelpMessage(ITelegramBotClient bot, long chatId, CancellationToken ct)
-{
-    var helpText = 
-        "🤖 *Я — TaskyAI, твой умный ассистент\\.*\n\n" +
-        "Я помогаю управлять делами, понимая обычный язык\\. Тебе не нужно заполнять формы — просто пиши или говори\\.\n\n" +
-        "🎙 *Голосовое планирование:*\n" +
-        "Зажми микрофон и скажи: _«Запиши встречу с клиентом завтра в 11 утра»_\\. Я сам создам задачу\\.\n\n" +
-        "💡 *Что я умею:*\n" +
-        "• Создавать задачи из текста и голоса\n" +
-        "• Присылать утренние сводки планов\n" +
-        "• Напоминать о дедлайнах\n" +
-        "• Переносить задачи: _«Передвинь отчет на вечер»_\n\n" +
-        "⚙️ *Твой рабочий день:*\n" +
-        "Я учитываю твои настройки рабочего времени при планировании задач\\.";
-
-    var keyboard = new ReplyKeyboardMarkup(new[]
     {
-        new[] { new KeyboardButton("📝 Мои задачи"), new KeyboardButton("❓ Помощь") }
-    })
-    {
-        ResizeKeyboard = true
-    };
+        var helpText =
+            "🤖 *Я — TaskyAI, твой умный ассистент\\.*\n\n" +
+            "Я помогаю управлять делами, понимая обычный язык\\. Тебе не нужно заполнять формы — просто пиши или говори\\.\n\n" +
+            "🎙 *Голосовое планирование:*\n" +
+            "Зажми микрофон и скажи: _«Запиши встречу с клиентом завтра в 11 утра»_\\. Я сам создам задачу\\.\n\n" +
+            "💡 *Что я умею:*\n" +
+            "• Создавать задачи из текста и голоса\n" +
+            "• Показывать статистику по задачам\n" +
+            "• Присылать утренние сводки планов\n" +
+            "• Напоминать о дедлайнах\n\n" +
+            "⚙️ *Твой рабочий день:*\n" +
+            "Я учитываю твои настройки рабочего времени при планировании задач\\.";
 
-    await bot.SendMessage(
-        chatId: chatId,
-        text: helpText,
-        parseMode: ParseMode.MarkdownV2,
-        replyMarkup: keyboard,
-        cancellationToken: ct
-    );
-}
+        await bot.SendMessage(
+            chatId: chatId,
+            text: helpText,
+            parseMode: ParseMode.MarkdownV2,
+            replyMarkup: CreateMainKeyboard(),
+            cancellationToken: ct
+        );
+    }
 
     private async Task ProcessPhoneNumber(ITelegramBotClient bot, long chatId, string phoneNumber, CancellationToken ct, Message message)
     {
@@ -315,20 +312,6 @@ public class TelegramBotService(
                 "❌ Ошибка при обработке голосового сообщения. Пожалуйста, попробуйте снова позже.",
                 cancellationToken: ct);
         }
-    }
-
-    private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, CancellationToken ct)
-    {
-        var user = await FindUserByChatIdAsync(chatId, ct);
-        if (user is null)
-        {
-            await bot.SendMessage(chatId,
-                "❌ Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
-                cancellationToken: ct);
-            return;
-        }
-
-        await ProcessAiMessage(bot, chatId, userMessage, user, ct);
     }
 
     private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, Tasky.Domain.Entities.User user, CancellationToken ct)
@@ -480,7 +463,41 @@ public class TelegramBotService(
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.Users.FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
+        return await db.Users
+            .Include(u => u.Settings)
+            .FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
+    }
+
+    private static DateTime ConvertToUserTime(DateTime utcDateTime, string? ianaTimeZone)
+    {
+        if (string.IsNullOrWhiteSpace(ianaTimeZone))
+            return utcDateTime;
+
+        try
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimeZone);
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, tz);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return utcDateTime;
+        }
+    }
+
+    private static string FormatUserFriendlyDate(DateTime localDateTime, DateTime nowLocal)
+    {
+        var dayDiff = (localDateTime.Date - nowLocal.Date).Days;
+        var time = localDateTime.ToString("HH:mm");
+
+        var dayLabel = dayDiff switch
+        {
+            0 => "Сегодня",
+            1 => "Завтра",
+            2 => "Послезавтра",
+            _ => localDateTime.ToString("d MMMM", new System.Globalization.CultureInfo("ru-RU"))
+        };
+
+        return $"{dayLabel} {time}";
     }
 
     private async Task SendKeyboardMessage(ITelegramBotClient bot, long chatId, string text, CancellationToken ct)
@@ -509,24 +526,81 @@ public class TelegramBotService(
 
         var tasks = await taskService.GetAllAsync(user.Id, null, false, null, null, null, null, null);
 
-        if (tasks == null || !tasks.Any())
+        var userTimeZone = user.Settings?.TimeZone;
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = ConvertToUserTime(nowUtc, userTimeZone);
+        var weekAheadLocal = nowLocal.Date.AddDays(7);
+
+        var upcomingTasks = tasks
+            .Where(t => t.Status != TaskCompletionStatus.Completed)
+            .Select(t =>
+            {
+                var effectiveDateUtc = t.StartAt ?? t.Deadline ?? t.EndAt;
+                var effectiveDateLocal = effectiveDateUtc.HasValue
+                    ? ConvertToUserTime(effectiveDateUtc.Value, userTimeZone)
+                    : (DateTime?)null;
+                return new { Task = t, EffectiveDate = effectiveDateLocal };
+            })
+            .Where(x => x.EffectiveDate.HasValue && x.EffectiveDate.Value >= nowLocal && x.EffectiveDate.Value.Date <= weekAheadLocal)
+            .OrderBy(x => x.EffectiveDate)
+            .ToList();
+
+        if (!upcomingTasks.Any())
         {
-            await bot.SendMessage(chatId, "📝 У вас нет задач.", cancellationToken: ct);
+            await bot.SendMessage(chatId, "📝 Нет задач на ближайшие 7 дней.", replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
             return;
         }
 
-        var activeTasks = tasks.Where(t => t.Status != TaskCompletionStatus.Completed).ToList();
-        if (!activeTasks.Any())
+        var taskList = string.Join("\n", upcomingTasks.Select(x =>
         {
-            await bot.SendMessage(chatId, "🎉 Все задачи выполнены!", cancellationToken: ct);
-            return;
-        }
+            var date = FormatUserFriendlyDate(x.EffectiveDate!.Value, nowLocal);
+            return $"- {x.Task.Title} ({date})";
+        }));
+        var message = $"📝 Задачи на ближайшие 7 дней:\n{taskList}";
 
-        var taskList = string.Join("\n", activeTasks.Select(t => $"- {t.Title} (до {t.Deadline?.ToString("dd.MM.yyyy") ?? "без срока"})"));
-        var message = $"📝 Ваши активные задачи:\n{taskList}";
-
-        await bot.SendMessage(chatId, message, cancellationToken: ct);
+        await bot.SendMessage(chatId, message, replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
     }
+
+    private async Task SendStatisticsMessage(ITelegramBotClient bot, long chatId, Tasky.Domain.Entities.User user, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var taskService = scope.ServiceProvider.GetRequiredService<ITaskService>();
+
+        var tasks = await taskService.GetAllAsync(user.Id, null, false, null, null, null, null, null);
+
+        if (!tasks.Any())
+        {
+            await bot.SendMessage(chatId, "📊 У вас пока нет задач.", replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+            return;
+        }
+
+        var tasksList = tasks.ToList();
+        var total = tasksList.Count;
+        var completed = tasksList.Count(t => t.Status == TaskCompletionStatus.Completed);
+        var active = total - completed;
+        var overdue = tasksList.Count(t => t.Status != TaskCompletionStatus.Completed &&
+            (t.Deadline ?? t.EndAt ?? t.StartAt) < DateTime.UtcNow);
+
+        var statsText =
+            $"📊 Ваша статистика:\n\n" +
+            $"📋 Всего задач: {total}\n" +
+            $"✅ Выполнено: {completed}\n" +
+            $"🔄 Активных: {active}\n" +
+            $"⚠️ Просрочено: {overdue}";
+
+        await bot.SendMessage(chatId, statsText, replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+    }
+
+    private static ReplyKeyboardMarkup CreateMainKeyboard() =>
+        new(new[]
+        {
+            new[] { new KeyboardButton("📝 Мои задачи"), new KeyboardButton("📊 Статистика") },
+            new[] { new KeyboardButton("❓ Помощь") }
+        })
+        {
+            ResizeKeyboard = true,
+            IsPersistent = true
+        };
 
     private async Task HandleErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken ct)
     {

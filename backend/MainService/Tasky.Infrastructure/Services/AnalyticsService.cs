@@ -47,7 +47,7 @@ namespace Tasky.Infrastructure.Services
             var averagePerTask = completedTasks > 0 ? totalHoursSpent / completedTasks : 0;
 
             var histogramData = BuildHistogramData(
-                completedTasksRaw, executionHistoryRaw, startDate, periodDays, ruCulture);
+                completedTasksRaw, executionHistoryRaw, startDate, endDate, periodDays, ruCulture);
 
             var mostProductivePeriod = histogramData.Count > 0
                 ? histogramData.MaxBy(x => x.Completed)!.Date
@@ -83,6 +83,7 @@ namespace Tasky.Infrastructure.Services
             List<Tasky.Domain.Entities.TaskItem> completedTasks,
             List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
             DateTime startDate,
+            DateTime endDate,
             double periodDays,
             CultureInfo ruCulture)
         {
@@ -90,12 +91,12 @@ namespace Tasky.Infrastructure.Services
                 return BuildByHour(completedTasks, executionHistory);
 
             if (periodDays <= 7)
-                return BuildByDayOfWeek(completedTasks, executionHistory, ruCulture);
+                return BuildByDayInRange(completedTasks, executionHistory, startDate, endDate, ruCulture, includeDayName: true);
 
             if (periodDays <= 31)
-                return BuildByWeek(completedTasks, executionHistory, startDate);
+                return BuildByDayInRange(completedTasks, executionHistory, startDate, endDate, ruCulture, includeDayName: false);
 
-            return BuildByMonth(completedTasks, executionHistory, ruCulture);
+            return BuildByMonthInRange(completedTasks, executionHistory, startDate, endDate, ruCulture);
         }
 
         private static List<HistogramDataPoint> BuildByHour(
@@ -123,63 +124,54 @@ namespace Tasky.Infrastructure.Services
                 .ToList();
         }
 
-        private static List<HistogramDataPoint> BuildByDayOfWeek(
+        /// <summary>
+        /// Строит гистограмму по дням диапазона.
+        /// Для недельного периода (includeDayName=true): метка "Пн, 25.03".
+        /// Для месячного периода (includeDayName=false): метка "25".
+        /// Все дни диапазона включаются, даже если задач нет (0).
+        /// </summary>
+        private static List<HistogramDataPoint> BuildByDayInRange(
             List<Tasky.Domain.Entities.TaskItem> completedTasks,
             List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
-            CultureInfo ruCulture)
+            DateTime startDate,
+            DateTime endDate,
+            CultureInfo ruCulture,
+            bool includeDayName)
         {
-            var completedByDay = completedTasks
-                .GroupBy(t => t.CompletedAt!.Value.DayOfWeek)
+            var completedByDate = completedTasks
+                .GroupBy(t => t.CompletedAt!.Value.Date)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            var hoursByDay = executionHistory
-                .GroupBy(eh => eh.FinishedAt!.Value.DayOfWeek)
+            var hoursByDate = executionHistory
+                .GroupBy(eh => eh.FinishedAt!.Value.Date)
                 .ToDictionary(g => g.Key,
                     g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
 
-            return completedByDay.Keys
-                .Union(hoursByDay.Keys)
-                .OrderBy(d => (int)d)
-                .Select(d => new HistogramDataPoint
+            var totalDays = (int)(endDate.Date - startDate.Date).TotalDays + 1;
+
+            return Enumerable.Range(0, totalDays)
+                .Select(i => startDate.Date.AddDays(i))
+                .Select(day => new HistogramDataPoint
                 {
-                    Date = ruCulture.DateTimeFormat.GetDayName(d),
-                    Completed = completedByDay.GetValueOrDefault(d, 0),
-                    Hours = Math.Round(hoursByDay.GetValueOrDefault(d, 0), 1)
+                    Date = includeDayName
+                        ? $"{ruCulture.DateTimeFormat.GetAbbreviatedDayName(day.DayOfWeek)} {day.Day:D2}.{day.Month:D2}"
+                        : $"{day.Day}",
+                    Completed = completedByDate.GetValueOrDefault(day, 0),
+                    Hours = Math.Round(hoursByDate.GetValueOrDefault(day, 0), 1)
                 })
                 .ToList();
         }
 
-        private static List<HistogramDataPoint> BuildByWeek(
+        /// <summary>
+        /// Строит гистограмму по месяцам диапазона.
+        /// Метка: "Январь" (если все месяцы в одном году) или "Январь 2025" (если разные годы).
+        /// Все месяцы диапазона включаются, даже если задач нет (0).
+        /// </summary>
+        private static List<HistogramDataPoint> BuildByMonthInRange(
             List<Tasky.Domain.Entities.TaskItem> completedTasks,
             List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
-            DateTime startDate)
-        {
-            int WeekNumber(DateTime dt) => (int)((dt - startDate).TotalDays / 7) + 1;
-
-            var completedByWeek = completedTasks
-                .GroupBy(t => WeekNumber(t.CompletedAt!.Value))
-                .ToDictionary(g => g.Key, g => g.Count());
-
-            var hoursByWeek = executionHistory
-                .GroupBy(eh => WeekNumber(eh.FinishedAt!.Value))
-                .ToDictionary(g => g.Key,
-                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
-
-            return completedByWeek.Keys
-                .Union(hoursByWeek.Keys)
-                .OrderBy(w => w)
-                .Select(w => new HistogramDataPoint
-                {
-                    Date = $"{w}-я неделя",
-                    Completed = completedByWeek.GetValueOrDefault(w, 0),
-                    Hours = Math.Round(hoursByWeek.GetValueOrDefault(w, 0), 1)
-                })
-                .ToList();
-        }
-
-        private static List<HistogramDataPoint> BuildByMonth(
-            List<Tasky.Domain.Entities.TaskItem> completedTasks,
-            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
+            DateTime startDate,
+            DateTime endDate,
             CultureInfo ruCulture)
         {
             var completedByMonth = completedTasks
@@ -191,14 +183,24 @@ namespace Tasky.Infrastructure.Services
                 .ToDictionary(g => g.Key,
                     g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
 
-            return completedByMonth.Keys
-                .Union(hoursByMonth.Keys)
-                .OrderBy(m => m.Year).ThenBy(m => m.Month)
-                .Select(m => new HistogramDataPoint
+            var isSingleYear = startDate.Year == endDate.Year;
+            var dateFormat = isSingleYear ? "MMMM" : "MMMM yyyy";
+
+            var firstMonth = new DateTime(startDate.Year, startDate.Month, 1);
+            var lastMonth = new DateTime(endDate.Year, endDate.Month, 1);
+            var totalMonths = ((lastMonth.Year - firstMonth.Year) * 12) + lastMonth.Month - firstMonth.Month + 1;
+
+            return Enumerable.Range(0, totalMonths)
+                .Select(i => firstMonth.AddMonths(i))
+                .Select(month =>
                 {
-                    Date = new DateTime(m.Year, m.Month, 1).ToString("MMMM yyyy", ruCulture),
-                    Completed = completedByMonth.GetValueOrDefault(m, 0),
-                    Hours = Math.Round(hoursByMonth.GetValueOrDefault(m, 0), 1)
+                    var key = (month.Year, month.Month);
+                    return new HistogramDataPoint
+                    {
+                        Date = month.ToString(dateFormat, ruCulture),
+                        Completed = completedByMonth.GetValueOrDefault(key, 0),
+                        Hours = Math.Round(hoursByMonth.GetValueOrDefault(key, 0), 1)
+                    };
                 })
                 .ToList();
         }

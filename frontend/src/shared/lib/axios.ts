@@ -24,7 +24,10 @@ function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
 
 function isLikelyHtmlResponse(value: string): boolean {
 	const normalizedValue = value.toLowerCase()
-	return normalizedValue.includes('<!doctype html') || normalizedValue.includes('<html')
+	return (
+		normalizedValue.includes('<!doctype html') ||
+		normalizedValue.includes('<html')
+	)
 }
 
 function shouldShowErrorToast(message: string): boolean {
@@ -88,11 +91,17 @@ function getFriendlyErrorMessage(error: AxiosError<unknown>): string {
 		return 'Произошла ошибка на сервере. Попробуйте позже.'
 	}
 
-	if (hasStringValue(error.message) && error.message.toLowerCase().includes('network')) {
+	if (
+		hasStringValue(error.message) &&
+		error.message.toLowerCase().includes('network')
+	) {
 		return 'Не удалось подключиться к серверу. Проверьте соединение.'
 	}
 
-	if (hasStringValue(error.message) && error.message.toLowerCase().includes('timeout')) {
+	if (
+		hasStringValue(error.message) &&
+		error.message.toLowerCase().includes('timeout')
+	) {
 		return 'Сервер отвечает слишком долго. Повторите попытку.'
 	}
 

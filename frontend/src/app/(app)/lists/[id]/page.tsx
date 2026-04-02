@@ -8,12 +8,12 @@ interface ListPageProps {
 }
 
 export default function ListPage({ params }: ListPageProps) {
-	const { id } = use(params);
-	const listId = Number(id);
+  const { id } = use(params);
+  const listId = Number(id);
 
-	return (
-		<div className="flex max-w-[807px] flex-col">
-			<TaskList listId={listId} />
-		</div>
-	);
+  return (
+    <div className="flex flex-col">
+      <TaskList listId={listId} />
+    </div>
+  );
 }

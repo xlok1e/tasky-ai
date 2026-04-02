@@ -16,6 +16,7 @@ export function useCalendarView(view: View) {
 	const [date, setDate] = useState(new Date());
 	const tasks = useTasksStore((s) => s.tasks);
 	const updateTask = useTasksStore((s) => s.updateTask);
+	const deleteTask = useTasksStore((s) => s.deleteTask);
 	const lists = useListsStore((s) => s.lists);
 	const { openNew, openEdit } = useTaskModal();
 
@@ -131,6 +132,13 @@ export function useCalendarView(view: View) {
 		[updateTask],
 	);
 
+	const handleDeleteEvent = useCallback(
+		(event: CalendarTaskEvent) => {
+			void deleteTask(event.resource.id);
+		},
+		[deleteTask],
+	);
+
 	return {
 		date,
 		events,
@@ -142,6 +150,7 @@ export function useCalendarView(view: View) {
 		handleSelectEvent,
 		handleEventDrop,
 		handleEventResize,
+		handleDeleteEvent,
 		handleAddTask,
 	};
 }

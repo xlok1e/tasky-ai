@@ -17,6 +17,7 @@ export interface Task {
 
 export interface AddTaskParams {
 	title: string;
+	description?: string | null;
 	startDate?: Date | null;
 	endDate?: Date | null;
 	deadline?: Date | null;

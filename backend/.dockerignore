@@ -1,0 +1,12 @@
+.git
+.gitignore
+.idea
+**/.idea
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/*.user
+**/*.suo
+**/*.rsuser
+README.md

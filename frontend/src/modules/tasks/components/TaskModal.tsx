@@ -1,307 +1,794 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { format } from "date-fns";
-import { Trash2, List, Flag } from "lucide-react";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
-import { Button } from "@shared/ui/button";
-import { Input } from "@shared/ui/input";
-import { Checkbox } from "@shared/ui/checkbox";
-import { Label } from "@shared/ui/label";
-import { Switch } from "@shared/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
-import { useTaskModal } from "../store/task-modal.store";
-import { useTasksStore } from "../store/tasks.store";
-import { useListsStore } from "@modules/lists/store/lists.store";
-import { Spinner } from "@shared/ui/spinner";
-import { TaskPriority } from "../types/task.enums";
+import { useEffect, useMemo, useState } from 'react'
+import {
+	addDays,
+	endOfISOWeek,
+	format,
+	isToday,
+	isValid,
+	startOfISOWeek,
+} from 'date-fns'
+import { ru } from 'date-fns/locale'
+import {
+	CalendarDays,
+	CalendarRange,
+	Flag,
+	Inbox,
+	Sunrise,
+	Sun,
+	Trash2,
+	X,
+} from 'lucide-react'
+import { toastMessage } from '@/shared/toast/toast'
+import { cn } from '@shared/lib/utils'
+import { Button } from '@shared/ui/button'
+import { Calendar } from '@shared/ui/calendar'
+import { Input } from '@shared/ui/input'
+import { Checkbox } from '@shared/ui/checkbox'
+import { Label } from '@shared/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@shared/ui/popover'
+import { Textarea } from '@shared/ui/textarea'
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from '@shared/ui/dialog'
+import { useTaskModal } from '../store/task-modal.store'
+import { useTasksStore } from '../store/tasks.store'
+import { useListsStore } from '@modules/lists/store/lists.store'
+import { Spinner } from '@shared/ui/spinner'
+import { TaskPriority } from '../types/task.enums'
 
-function toInputDateTime(date: Date | null | undefined): string {
-	if (!date) return "";
-	return format(date, "yyyy-MM-dd'T'HH:mm");
+type DateTabValue = 'start' | 'end'
+
+const DEFAULT_TIME_BY_TAB: Record<DateTabValue, string> = {
+	start: '09:00',
+	end: '18:00',
 }
 
-function toInputDate(date: Date | null | undefined): string {
-	if (!date) return "";
-	return format(date, "yyyy-MM-dd");
+const LISTS_WITH_SCROLL_COUNT = 5
+
+interface PriorityOption {
+	value: TaskPriority
+	label: string
+	colorClassName: string
 }
 
-const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] = [
-	{ value: TaskPriority.Low, label: "Низкий", color: "text-muted-foreground" },
-	{ value: TaskPriority.Medium, label: "Средний", color: "text-yellow-500" },
-	{ value: TaskPriority.High, label: "Высокий", color: "text-destructive" },
-];
+const PRIORITY_OPTIONS: PriorityOption[] = [
+	{
+		value: TaskPriority.Low,
+		label: 'Низкий',
+		colorClassName: 'text-muted-foreground',
+	},
+	{
+		value: TaskPriority.Medium,
+		label: 'Средний',
+		colorClassName: 'text-yellow-600',
+	},
+	{
+		value: TaskPriority.High,
+		label: 'Высокий',
+		colorClassName: 'text-destructive',
+	},
+]
+
+function isDateTabValue(value: string): value is DateTabValue {
+	return value === 'start' || value === 'end'
+}
+
+function parseTimeValue(
+	timeValue: string,
+): { hours: number; minutes: number } | null {
+	const matchedTime = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeValue)
+	if (!matchedTime) {
+		return null
+	}
+
+	const [, hoursValue, minutesValue] = matchedTime
+	return {
+		hours: Number(hoursValue),
+		minutes: Number(minutesValue),
+	}
+}
+
+function normalizeTimeInput(value: string): string {
+	const digitsOnly = value.replace(/\D/g, '').slice(0, 4)
+	if (digitsOnly.length <= 2) {
+		return digitsOnly
+	}
+	return `${digitsOnly.slice(0, 2)}:${digitsOnly.slice(2)}`
+}
+
+function isCompleteTimeValue(value: string): boolean {
+	return /^([01]\d|2[0-3]):([0-5]\d)$/.test(value)
+}
+
+function applyTimeToDate(dateValue: Date, timeValue: string): Date {
+	const parsedTime = parseTimeValue(timeValue)
+	const nextDate = new Date(dateValue)
+	if (!parsedTime) {
+		return nextDate
+	}
+
+	nextDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0)
+	return nextDate
+}
+
+function toTimeInputValue(dateValue: Date | null): string {
+	if (!dateValue) {
+		return ''
+	}
+	return format(dateValue, 'HH:mm')
+}
+
+function formatDateLabel(dateValue: Date): string {
+	if (isToday(dateValue)) {
+		return `Сегодня, ${format(dateValue, 'd MMMM', { locale: ru })}`
+	}
+	return format(dateValue, 'd MMMM', { locale: ru })
+}
+
+function toDateRangeLabel(
+	startDate: Date | null,
+	endDate: Date | null,
+): string {
+	if (!startDate && !endDate) {
+		return 'Без даты'
+	}
+
+	if (startDate && !endDate) {
+		return formatDateLabel(startDate)
+	}
+
+	if (!startDate && endDate) {
+		return `До ${format(endDate, 'd MMMM', { locale: ru })}`
+	}
+
+	if (startDate && endDate) {
+		return `${format(startDate, 'd MMM', { locale: ru })} - ${format(endDate, 'd MMM', { locale: ru })}`
+	}
+
+	return 'Без даты'
+}
 
 export function TaskModal() {
-	const { isOpen, editingTask, prefill, close } = useTaskModal();
-	const { addTask, updateTask, deleteTask } = useTasksStore();
-	const lists = useListsStore((s) => s.lists);
+	const { isOpen, editingTask, prefill, close } = useTaskModal()
+	const { addTask, updateTask, deleteTask } = useTasksStore()
+	const lists = useListsStore(s => s.lists)
 
-	const [title, setTitle] = useState("");
-	const [isCompleted, setIsCompleted] = useState(false);
-	const [isAllDay, setIsAllDay] = useState(false);
-	const [startValue, setStartValue] = useState("");
-	const [endValue, setEndValue] = useState("");
-	const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Low);
-	const [listId, setListId] = useState<number | null>(null);
-	const [isSaving, setIsSaving] = useState(false);
-	const [isDeleting, setIsDeleting] = useState(false);
+	const [title, setTitle] = useState('')
+	const [description, setDescription] = useState('')
+	const [isCompleted, setIsCompleted] = useState(false)
+	const [startDate, setStartDate] = useState<Date | null>(null)
+	const [endDate, setEndDate] = useState<Date | null>(null)
+	const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Low)
+	const [listId, setListId] = useState<number | null>(null)
+	const [isDatePopoverOpen, setIsDatePopoverOpen] = useState(false)
+	const [isPriorityPopoverOpen, setIsPriorityPopoverOpen] = useState(false)
+	const [isListPopoverOpen, setIsListPopoverOpen] = useState(false)
+	const [dateTab, setDateTab] = useState<DateTabValue>('start')
+	const [draftStartDate, setDraftStartDate] = useState<Date | null>(null)
+	const [draftEndDate, setDraftEndDate] = useState<Date | null>(null)
+	const [draftStartTime, setDraftStartTime] = useState('')
+	const [draftEndTime, setDraftEndTime] = useState('')
+	const [draftMonth, setDraftMonth] = useState<Date>(new Date())
+	const [isSaving, setIsSaving] = useState(false)
+	const [isDeleting, setIsDeleting] = useState(false)
 
 	useEffect(() => {
 		if (isOpen) {
-			const allDay = editingTask?.isAllDay ?? false;
-			setTitle(editingTask?.title ?? "");
-			setIsCompleted(editingTask?.isCompleted ?? false);
-			setIsAllDay(allDay);
+			setTitle(editingTask?.title ?? '')
+			setDescription(editingTask?.description ?? '')
+			setIsCompleted(editingTask?.isCompleted ?? false)
+			const nextStartDate = editingTask?.startDate ?? prefill?.startDate ?? null
+			const nextEndDate = editingTask?.endDate ?? prefill?.endDate ?? null
+			setStartDate(nextStartDate)
+			setEndDate(nextEndDate)
+			setDraftStartDate(nextStartDate)
+			setDraftEndDate(nextEndDate)
+			setDraftStartTime(toTimeInputValue(nextStartDate))
+			setDraftEndTime(toTimeInputValue(nextEndDate))
+			setDateTab('start')
+			setDraftMonth(nextStartDate ?? new Date())
 
-			const rawStart = editingTask?.startDate ?? prefill?.startDate ?? null;
-			const rawEnd = editingTask?.endDate ?? prefill?.endDate ?? null;
+			setPriority(editingTask?.priority ?? TaskPriority.Low)
+			setListId(editingTask?.listId ?? prefill?.listId ?? null)
+			setIsDatePopoverOpen(false)
+			setIsPriorityPopoverOpen(false)
+			setIsListPopoverOpen(false)
+			setIsSaving(false)
+			setIsDeleting(false)
+		}
+	}, [isOpen, editingTask, prefill])
 
-			if (allDay) {
-				setStartValue(toInputDate(rawStart));
-				setEndValue(toInputDate(rawEnd));
+	const selectedPriorityOption = useMemo(() => {
+		return (
+			PRIORITY_OPTIONS.find(option => option.value === priority) ??
+			PRIORITY_OPTIONS[0]
+		)
+	}, [priority])
+
+	const selectedList = useMemo(() => {
+		if (listId === null) {
+			return null
+		}
+		return lists.find(list => list.id === listId) ?? null
+	}, [listId, lists])
+
+	const isBusy = isSaving || isDeleting
+
+	const resetDateDraft = () => {
+		setDraftStartDate(startDate)
+		setDraftEndDate(endDate)
+		setDraftStartTime(toTimeInputValue(startDate))
+		setDraftEndTime(toTimeInputValue(endDate))
+		setDateTab('start')
+		setDraftMonth(startDate ?? new Date())
+	}
+
+	const handleDatePopoverOpenChange = (open: boolean) => {
+		setIsDatePopoverOpen(open)
+		if (open) {
+			resetDateDraft()
+		}
+	}
+
+	const handleDateSelect = (
+		tab: DateTabValue,
+		selectedDate: Date | undefined,
+	) => {
+		if (!selectedDate) {
+			if (tab === 'start') {
+				setDraftStartDate(null)
 			} else {
-				setStartValue(toInputDateTime(rawStart));
-				setEndValue(toInputDateTime(rawEnd));
+				setDraftEndDate(null)
 			}
-
-			setPriority(editingTask?.priority ?? TaskPriority.Low);
-			setListId(editingTask?.listId ?? prefill?.listId ?? null);
-			setIsSaving(false);
-			setIsDeleting(false);
+			return
 		}
-	}, [isOpen, editingTask, prefill]);
 
-	const handleAllDayToggle = (checked: boolean) => {
-		setIsAllDay(checked);
-		if (checked) {
-			// Convert datetime-local values to date-only
-			if (startValue) {
-				setStartValue(startValue.substring(0, 10));
+		const currentDate = tab === 'start' ? draftStartDate : draftEndDate
+		const selectedTabTime = tab === 'start' ? draftStartTime : draftEndTime
+		const currentTimeValue =
+			(isCompleteTimeValue(selectedTabTime) && selectedTabTime) ||
+			DEFAULT_TIME_BY_TAB[tab]
+		const nextDate = applyTimeToDate(selectedDate, currentTimeValue)
+		if (tab === 'start') {
+			setDraftStartDate(nextDate)
+			setDraftStartTime(currentTimeValue)
+			return
+		}
+		setDraftEndDate(nextDate)
+		setDraftEndTime(currentTimeValue)
+	}
+
+	const handleDraftTimeChange = (tab: DateTabValue, timeValue: string) => {
+		const normalizedTime = normalizeTimeInput(timeValue)
+		if (tab === 'start') {
+			setDraftStartTime(normalizedTime)
+			if (!isCompleteTimeValue(normalizedTime)) {
+				return
 			}
-			setEndValue("");
+			setDraftStartDate(previousDate =>
+				previousDate
+					? applyTimeToDate(previousDate, normalizedTime)
+					: previousDate,
+			)
+			return
+		}
+
+		setDraftEndTime(normalizedTime)
+		if (!isCompleteTimeValue(normalizedTime)) {
+			return
+		}
+		setDraftEndDate(previousDate =>
+			previousDate
+				? applyTimeToDate(previousDate, normalizedTime)
+				: previousDate,
+		)
+	}
+
+	const handleCancelDateSelection = () => {
+		resetDateDraft()
+		setIsDatePopoverOpen(false)
+	}
+
+	const handleSaveDateSelection = () => {
+		if (
+			draftStartDate &&
+			draftEndDate &&
+			draftEndDate.getTime() < draftStartDate.getTime()
+		) {
+			toastMessage.showError('Дата окончания не может быть раньше даты начала')
+			return
+		}
+
+		setStartDate(draftStartDate)
+		setEndDate(draftEndDate)
+		setIsDatePopoverOpen(false)
+	}
+
+	const applyQuickDate = (
+		preset: 'today' | 'tomorrow' | 'thisWeek' | 'nextWeek',
+	) => {
+		const now = new Date()
+		let nextStart: Date
+		let nextEnd: Date | null = null
+
+		if (preset === 'today') {
+			nextStart = applyTimeToDate(now, DEFAULT_TIME_BY_TAB.start)
+		} else if (preset === 'tomorrow') {
+			nextStart = applyTimeToDate(addDays(now, 1), DEFAULT_TIME_BY_TAB.start)
+		} else if (preset === 'thisWeek') {
+			nextStart = applyTimeToDate(
+				startOfISOWeek(now),
+				DEFAULT_TIME_BY_TAB.start,
+			)
+			nextEnd = applyTimeToDate(endOfISOWeek(now), DEFAULT_TIME_BY_TAB.end)
 		} else {
-			// Convert date-only values to datetime-local
-			if (startValue) {
-				setStartValue(startValue + "T00:00");
-			}
-			if (endValue) {
-				setEndValue(endValue + "T00:00");
-			}
-		}
-	};
-
-	const handleSave = async () => {
-		const trimmed = title.trim();
-		if (!trimmed) return;
-
-		let startDate: Date | null = null;
-		let endDate: Date | null = null;
-
-		if (isAllDay) {
-			if (startValue) {
-				// Set time to midnight for the start date
-				startDate = new Date(startValue + "T00:00:00");
-				// End date is start date + 24 hours
-				endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
-			}
-		} else {
-			startDate = startValue ? new Date(startValue) : null;
-			endDate = endValue ? new Date(endValue) : null;
+			const nextWeekStart = addDays(startOfISOWeek(now), 7)
+			nextStart = applyTimeToDate(nextWeekStart, DEFAULT_TIME_BY_TAB.start)
+			nextEnd = applyTimeToDate(
+				endOfISOWeek(nextWeekStart),
+				DEFAULT_TIME_BY_TAB.end,
+			)
 		}
 
-		setIsSaving(true);
+		setDraftStartDate(nextStart)
+		setDraftEndDate(nextEnd)
+		setDraftStartTime(toTimeInputValue(nextStart))
+		setDraftEndTime(nextEnd ? toTimeInputValue(nextEnd) : '')
+		setDraftMonth(nextStart)
+	}
+
+	const persistTaskChanges = async (): Promise<boolean> => {
+		const trimmed = title.trim()
+		if (!trimmed) {
+			if (editingTask) {
+				toastMessage.showError('Название задачи не может быть пустым')
+				return false
+			}
+			return true
+		}
+
+		const normalizedDescription = description.trim()
+		const nextDescription =
+			normalizedDescription.length > 0 ? normalizedDescription : null
+		const nextStartDate =
+			startDate && isValid(startDate) ? new Date(startDate) : null
+		const nextEndDate = endDate && isValid(endDate) ? new Date(endDate) : null
+
+		if (startDate && !nextStartDate) {
+			toastMessage.showError('Некорректная дата начала')
+			return false
+		}
+
+		if (endDate && !nextEndDate) {
+			toastMessage.showError('Некорректная дата окончания')
+			return false
+		}
+
+		if (
+			nextStartDate &&
+			nextEndDate &&
+			nextEndDate.getTime() < nextStartDate.getTime()
+		) {
+			toastMessage.showError('Дата окончания не может быть раньше даты начала')
+			return false
+		}
+
+		setIsSaving(true)
 		try {
 			if (editingTask) {
 				await updateTask(editingTask.id, {
 					title: trimmed,
+					description: nextDescription,
 					isCompleted,
-					isAllDay,
-					startDate,
-					endDate,
+					isAllDay: false,
+					startDate: nextStartDate,
+					endDate: nextEndDate,
 					priority,
 					listId,
-				});
+				})
 			} else {
 				await addTask({
 					title: trimmed,
-					startDate,
-					endDate,
-					isAllDay,
+					description: nextDescription,
+					startDate: nextStartDate,
+					endDate: nextEndDate,
+					isAllDay: false,
 					listId,
 					priority,
-				});
+				})
 			}
-			close();
+			return true
 		} finally {
-			setIsSaving(false);
+			setIsSaving(false)
 		}
-	};
+	}
+
+	const handleDialogOpenChange = (open: boolean) => {
+		if (open || isBusy) {
+			return
+		}
+
+		void (async () => {
+			const hasChangesSaved = await persistTaskChanges()
+			if (hasChangesSaved) {
+				close()
+			}
+		})()
+	}
 
 	const handleDelete = async () => {
-		if (!editingTask) return;
-		setIsDeleting(true);
+		if (!editingTask) return
+		setIsDeleting(true)
 		try {
-			await deleteTask(editingTask.id);
-			close();
+			await deleteTask(editingTask.id)
+			close()
 		} finally {
-			setIsDeleting(false);
+			setIsDeleting(false)
 		}
-	};
-
-	const isBusy = isSaving || isDeleting;
+	}
 
 	return (
-		<Dialog open={isOpen} onOpenChange={(open) => !open && !isBusy && close()}>
-			<DialogContent className="sm:max-w-md">
-				<DialogHeader>
-					<div className="hidden">
-						<DialogTitle />
-					</div>
-					<div className="flex items-start gap-3">
-						<Checkbox
-							id="modal-completed"
-							checked={isCompleted}
-							onCheckedChange={(v) => setIsCompleted(Boolean(v))}
-							className="w-5 h-5 mt-[10px] shrink-0"
-						/>
-						<Input
-							id="modal-title"
-							placeholder="Название задачи"
-							value={title}
-							onChange={(e) => setTitle(e.target.value)}
-							className="flex-1 outline-0 border-0 shadow-none text-[16px]! p-0 pt-0.5 font-bold"
-							autoFocus
-							onKeyDown={(e) => e.key === "Enter" && handleSave()}
-						/>
+		<Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
+			<DialogContent className='w-[429px] max-w-[429px] gap-0 overflow-hidden p-0 sm:max-w-[429px] [&>button]:hidden'>
+				<DialogHeader className='space-y-0'>
+					<DialogTitle className='sr-only'>
+						{editingTask ? 'Редактирование задачи' : 'Новая задача'}
+					</DialogTitle>
+					<div className='flex items-center justify-between border-b border-border px-6 py-3'>
+						<div className='flex min-w-0 items-center gap-3'>
+							<Checkbox
+								id='modal-completed'
+								checked={isCompleted}
+								onCheckedChange={value => setIsCompleted(Boolean(value))}
+								className='size-5 rounded-[4px] border border-border'
+							/>
+							<div className='h-5 w-px shrink-0 bg-border' />
+							<Popover
+								open={isDatePopoverOpen}
+								onOpenChange={handleDatePopoverOpenChange}
+							>
+								<PopoverTrigger asChild>
+									<Button
+										type='button'
+										variant='ghost'
+										size='sm'
+										className='h-8 max-w-full gap-2 px-1 text-muted-foreground hover:text-foreground ml-[-8px]'
+									>
+										<CalendarDays
+											className='size-5 shrink-0 text-primary'
+											strokeWidth={1.5}
+										/>
+										<span className='truncate text-[16px] text-primary'>
+											{toDateRangeLabel(startDate, endDate)}
+										</span>
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent
+									align='start'
+									className='w-[300px] p-0 overflow-hidden'
+								>
+									{/* Tabs */}
+									<div className='flex border-b border-border'>
+										{(
+											[
+												{ value: 'start', label: 'Начало' },
+												{ value: 'end', label: 'Окончание' },
+											] as const
+										).map(tab => (
+											<button
+												key={tab.value}
+												type='button'
+												onClick={() => {
+													setDateTab(tab.value)
+													setDraftMonth(
+														(tab.value === 'start'
+															? draftStartDate
+															: draftEndDate) ??
+															draftStartDate ??
+															new Date(),
+													)
+												}}
+												className={cn(
+													'flex-1 py-2.5 text-sm font-medium transition-colors',
+													dateTab === tab.value
+														? 'border-b-2 border-primary text-foreground'
+														: 'text-muted-foreground hover:text-foreground',
+												)}
+											>
+												{tab.label}
+											</button>
+										))}
+									</div>
+
+									{/* Icon shortcuts */}
+									<div className='flex items-center justify-center gap-4 border-b border-border px-4 py-3'>
+										{(
+											[
+												{ key: 'today', icon: Sun, title: 'Сегодня' },
+												{ key: 'tomorrow', icon: Sunrise, title: 'Завтра' },
+												{
+													key: 'thisWeek',
+													icon: CalendarDays,
+													title: 'Эта неделя',
+												},
+												{
+													key: 'nextWeek',
+													icon: CalendarRange,
+													title: 'Следующая неделя',
+												},
+											] as const
+										).map(({ key, icon: Icon, title }) => (
+											<button
+												key={key}
+												type='button'
+												title={title}
+												aria-label={title}
+												onClick={() => applyQuickDate(key)}
+												className='flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary'
+											>
+												<Icon className='size-5' />
+											</button>
+										))}
+									</div>
+
+									{/* Date chip for active tab */}
+									<div className='flex items-center justify-between px-4 pt-3 pb-1'>
+										{(dateTab === 'start' ? draftStartDate : draftEndDate) ? (
+											<span className='rounded-full bg-primary/10 px-3 py-0.5 text-sm font-medium text-primary'>
+												{format(
+													(dateTab === 'start'
+														? draftStartDate
+														: draftEndDate)!,
+													'd MMMM yyyy',
+													{ locale: ru },
+												)}
+											</span>
+										) : (
+											<span className='text-sm text-muted-foreground/60'>
+												не выбрана
+											</span>
+										)}
+										{(dateTab === 'start' ? draftStartDate : draftEndDate) && (
+											<button
+												type='button'
+												onClick={() => {
+													if (dateTab === 'start') {
+														setDraftStartDate(null)
+														setDraftStartTime('')
+													} else {
+														setDraftEndDate(null)
+														setDraftEndTime('')
+													}
+												}}
+												className='rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground'
+												aria-label='Очистить дату'
+											>
+												<X className='size-3.5' />
+											</button>
+										)}
+									</div>
+
+									{/* Calendar */}
+									<div className='px-3 pb-2'>
+										<Calendar
+											mode='single'
+											selected={
+												(dateTab === 'start' ? draftStartDate : draftEndDate) ??
+												undefined
+											}
+											onSelect={value => handleDateSelect(dateTab, value)}
+											month={draftMonth}
+											onMonthChange={setDraftMonth}
+											className='p-0'
+										/>
+									</div>
+
+									{/* Time input */}
+									{(dateTab === 'start' ? draftStartDate : draftEndDate) && (
+										<div className='border-t border-border px-4 py-3'>
+											<div className='flex items-center gap-2'>
+												<Label
+													htmlFor={`task-modal-time-${dateTab}`}
+													className='shrink-0 text-sm text-muted-foreground'
+												>
+													{dateTab === 'start'
+														? 'Время начала'
+														: 'Время окончания'}
+												</Label>
+												<Input
+													id={`task-modal-time-${dateTab}`}
+													type='text'
+													inputMode='numeric'
+													placeholder='HH:mm'
+													maxLength={5}
+													value={
+														dateTab === 'start' ? draftStartTime : draftEndTime
+													}
+													onChange={event =>
+														handleDraftTimeChange(dateTab, event.target.value)
+													}
+													className='h-8 max-w-[90px] text-sm'
+												/>
+											</div>
+										</div>
+									)}
+
+									{/* Footer */}
+									<div className='flex items-center justify-end gap-2 border-t border-border px-4 py-2.5'>
+										<Button
+											type='button'
+											variant='ghost'
+											size='sm'
+											onClick={handleCancelDateSelection}
+										>
+											Отмена
+										</Button>
+										<Button
+											type='button'
+											size='sm'
+											onClick={handleSaveDateSelection}
+										>
+											Сохранить
+										</Button>
+									</div>
+								</PopoverContent>
+							</Popover>
+						</div>
+
+						<Popover
+							open={isPriorityPopoverOpen}
+							onOpenChange={setIsPriorityPopoverOpen}
+						>
+							<PopoverTrigger asChild>
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className={cn(
+										'size-9 ',
+										selectedPriorityOption.colorClassName,
+									)}
+								>
+									<Flag className='size-4' />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent align='end' className='w-[200px] p-1'>
+								<div className='flex flex-col gap-1'>
+									{PRIORITY_OPTIONS.map(option => (
+										<Button
+											key={option.value}
+											type='button'
+											variant='ghost'
+											className={cn(
+												'w-full justify-start gap-2 h-[32px]! text-[16px]',
+												priority === option.value && 'bg-accent',
+											)}
+											onClick={() => {
+												setPriority(option.value)
+												setIsPriorityPopoverOpen(false)
+											}}
+										>
+											<Flag className={cn('size-4', option.colorClassName)} />
+											{option.label}
+										</Button>
+									))}
+								</div>
+							</PopoverContent>
+						</Popover>
 					</div>
 				</DialogHeader>
 
-				<div className="flex flex-col gap-3 py-1">
-					{/* All Day toggle */}
-					<div className="flex items-center justify-between">
-						<Label htmlFor="modal-all-day" className="text-sm cursor-pointer">
-							Весь день
-						</Label>
-						<Switch id="modal-all-day" checked={isAllDay} onCheckedChange={handleAllDayToggle} />
-					</div>
-
-					{/* Schedule */}
-					{isAllDay ? (
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="modal-start" className="text-xs text-muted-foreground">
-								Дата
-							</Label>
-							<Input
-								id="modal-start"
-								type="date"
-								value={startValue}
-								onChange={(e) => setStartValue(e.target.value)}
-								className="w-full text-sm"
-							/>
-						</div>
-					) : (
-						<div className="grid grid-cols-2 gap-3">
-							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="modal-start" className="text-xs text-muted-foreground">
-									Начало
-								</Label>
-								<Input
-									id="modal-start"
-									type="datetime-local"
-									value={startValue}
-									onChange={(e) => setStartValue(e.target.value)}
-									className="w-full text-sm"
-								/>
-							</div>
-							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="modal-end" className="text-xs text-muted-foreground">
-									Конец
-								</Label>
-								<Input
-									id="modal-end"
-									type="datetime-local"
-									value={endValue}
-									onChange={(e) => setEndValue(e.target.value)}
-									className="w-full text-sm"
-								/>
-							</div>
-						</div>
-					)}
-
-					{/* List */}
-					<div className="flex flex-col gap-1.5">
-						<Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-							<List size={12} />
-							Список
-						</Label>
-						<Select
-							value={listId !== null ? String(listId) : "inbox"}
-							onValueChange={(v) => setListId(v === "inbox" ? null : Number(v))}
-						>
-							<SelectTrigger className="w-full text-sm">
-								<SelectValue placeholder="Входящие" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="inbox">Входящие</SelectItem>
-								{lists.map((l) => (
-									<SelectItem key={l.id} value={String(l.id)}>
-										<span className="flex items-center gap-2">
-											<span
-												className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-												style={{ backgroundColor: l.colorHex }}
-											/>
-											{l.name}
-										</span>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
-
-					{/* Priority */}
-					<div className="flex flex-col gap-1.5">
-						<Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-							<Flag size={12} />
-							Приоритет
-						</Label>
-						<div className="flex gap-2">
-							{PRIORITY_OPTIONS.map((opt) => (
-								<Button
-									key={opt.value}
-									type="button"
-									variant={priority === opt.value ? "default" : "outline"}
-									size="sm"
-									className={`flex-1 text-sm ${priority !== opt.value ? opt.color : ""}`}
-									onClick={() => setPriority(opt.value)}
-								>
-									{opt.label}
-								</Button>
-							))}
-						</div>
-					</div>
+				<div className='space-y-2 px-6 py-5'>
+					<Input
+						id='modal-title'
+						placeholder='Название задачи'
+						value={title}
+						onChange={event => setTitle(event.target.value)}
+						className='h-auto border-0 bg-transparent p-0 text-[18px]! leading-[1.05] font-bold shadow-none focus-visible:ring-0'
+						autoFocus
+					/>
+					<Textarea
+						id='modal-description'
+						placeholder='Описание задачи'
+						value={description}
+						onChange={event => setDescription(event.target.value)}
+						className='min-h-[80px] resize-none border-0 bg-transparent p-0 text-[18px]! shadow-none focus-visible:ring-0'
+					/>
 				</div>
 
-				<DialogFooter>
-					{editingTask && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="mr-auto text-destructive hover:text-destructive"
-							onClick={handleDelete}
-							disabled={isBusy}
+				<div className='px-6 py-3'>
+					<div className='flex flex-wrap items-center justify-between gap-3'>
+						<Popover
+							open={isListPopoverOpen}
+							onOpenChange={setIsListPopoverOpen}
 						>
-							{isDeleting ? <Spinner /> : <Trash2 size={16} />}
-						</Button>
-					)}
-					<Button variant="outline" onClick={close} disabled={isBusy}>
-						Отменить
-					</Button>
-					<Button onClick={handleSave} disabled={!title.trim() || isBusy}>
-						{isSaving ? <Spinner /> : "Сохранить"}
-					</Button>
-				</DialogFooter>
+							<PopoverTrigger asChild>
+								<Button
+									type='button'
+									variant='ghost'
+									className='h-9 max-w-[260px] justify-start gap-2 px-2 text-muted-foreground hover:text-foreground'
+								>
+									{selectedList ? (
+										<span
+											className='h-[22px] w-[22px] shrink-0 rounded-[4px]'
+											style={{ backgroundColor: selectedList.colorHex }}
+										/>
+									) : (
+										<Inbox className='size-[18px] shrink-0' />
+									)}
+									<span className='truncate text-sm'>
+										{selectedList ? selectedList.name : 'Входящие'}
+									</span>
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent align='start' className='w-[260px] p-1'>
+								<div
+									className={cn(
+										'flex flex-col gap-1',
+										lists.length > LISTS_WITH_SCROLL_COUNT &&
+											'max-h-56 overflow-y-auto pr-1',
+									)}
+								>
+									<Button
+										type='button'
+										variant='ghost'
+										className={cn(
+											'w-full justify-start gap-3 px-2 h-[32px]! text-[16px]',
+											listId === null && 'bg-accent',
+										)}
+										onClick={() => {
+											setListId(null)
+											setIsListPopoverOpen(false)
+										}}
+									>
+										<Inbox className='size-[18px] shrink-0 text-muted-foreground' />
+										Входящие
+									</Button>
+									{lists.map(list => (
+										<Button
+											key={list.id}
+											type='button'
+											variant='ghost'
+											className={cn(
+												'w-full justify-start gap-3 px-2 text-[16px] h-[32px]!',
+												listId === list.id && 'bg-accent',
+											)}
+											onClick={() => {
+												setListId(list.id)
+												setIsListPopoverOpen(false)
+											}}
+										>
+											<span
+												className='h-[22px] w-[22px] shrink-0 rounded-[4px]'
+												style={{ backgroundColor: list.colorHex }}
+											/>
+											<span className='truncate'>{list.name}</span>
+										</Button>
+									))}
+								</div>
+							</PopoverContent>
+						</Popover>
+
+						{editingTask && (
+							<Button
+								type='button'
+								variant='ghost'
+								size='icon'
+								className='text-destructive hover:text-destructive'
+								onClick={handleDelete}
+								disabled={isBusy}
+							>
+								{isDeleting ? <Spinner /> : <Trash2 className='size-4' />}
+							</Button>
+						)}
+					</div>
+				</div>
 			</DialogContent>
 		</Dialog>
-	);
+	)
 }

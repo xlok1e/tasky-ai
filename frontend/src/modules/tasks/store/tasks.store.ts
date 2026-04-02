@@ -132,6 +132,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
 	addTask: async ({
 		title,
+		description = null,
 		startDate = null,
 		endDate = null,
 		isAllDay = false,
@@ -140,6 +141,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 	}: AddTaskParams) => {
 		const request: CreateTaskRequest = {
 			title: title.trim(),
+			description,
 			startAt: startDate ? startDate.toISOString() : null,
 			endAt: endDate ? endDate.toISOString() : null,
 			priority,

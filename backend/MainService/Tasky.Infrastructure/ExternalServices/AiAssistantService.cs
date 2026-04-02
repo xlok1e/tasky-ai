@@ -173,6 +173,15 @@ namespace Tasky.Infrastructure.ExternalServices
             - Set ONLY changed fields; all other fields = null.
             - status values: "Completed" | "InProgress" | null.
 
+            [Undo / revert last confirmed change] User says "верни как было", "отмени изменение", "передумал", "откати", "верни обратно", etc. after a CONFIRMED update:
+            - Look at the conversation history to find the last confirmed update (the previous pendingUpdate values that were confirmed).
+            - Create a NEW intent="update_task" with pendingUpdate that reverts the fields to their PREVIOUS values (before that update).
+            - If the task was previously isAllDay=true and was changed to a specific time → revert: isAllDay=true, startAt=midnight of that date UTC, endAt=null.
+            - If the task previously had no time (isAllDay=true) and was given a time → revert to isAllDay=true.
+            - reply MUST describe what will be reverted. End with "Подтверждаете?"
+              Example: «Вернуть задачу «Созвон» на весь день 28 марта (убрать время). Подтверждаете?»
+            - NEVER just say "Я отменяю изменение" as plain text — always produce a pendingUpdate for the user to confirm.
+
             [Delete task request]:
             - ALWAYS refuse. reply = «К сожалению, я не могу удалить задачу в целях безопасности. Удалить задачу можно вручную в приложении.»
             - intent=null, pendingTask=null, pendingUpdate=null, pendingQuery=null.
@@ -195,6 +204,7 @@ namespace Tasky.Infrastructure.ExternalServices
             4. Always reply in Russian. Be concise and answer only what was asked.
             5. When intent = create_task or update_task, the corresponding pending object is MANDATORY — if you cannot fill it, use intent=null and ask for clarification instead.
             6. When intent = create_task or update_task: reply contains ONLY the confirmation question — no Google Calendar status, no extra advice, nothing else.
+            7. NEVER respond to "верни как было" / "отмени изменение" / "передумал" / "откати" with plain text. Always produce a new pendingUpdate (intent="update_task") that reverts the previously confirmed change based on conversation history.
             """;
         }
 
@@ -308,32 +318,34 @@ namespace Tasky.Infrastructure.ExternalServices
                 : null;
 
             PendingTaskDto? pendingTask = null;
-            if (string.Equals(intent, "create_task", StringComparison.OrdinalIgnoreCase)
-                && root.TryGetProperty("pendingTask", out var ptEl)
-                && ptEl.ValueKind == JsonValueKind.Object)
+            if (root.TryGetProperty("pendingTask", out var ptEl) && ptEl.ValueKind == JsonValueKind.Object)
                 pendingTask = ParsePendingTask(ptEl);
 
             PendingUpdateDto? pendingUpdate = null;
-            if (string.Equals(intent, "update_task", StringComparison.OrdinalIgnoreCase)
-                && root.TryGetProperty("pendingUpdate", out var puEl)
-                && puEl.ValueKind == JsonValueKind.Object)
+            if (root.TryGetProperty("pendingUpdate", out var puEl) && puEl.ValueKind == JsonValueKind.Object)
                 pendingUpdate = ParsePendingUpdate(puEl);
 
             PendingQueryDto? pendingQuery = null;
-            if (string.Equals(intent, "query_tasks", StringComparison.OrdinalIgnoreCase)
-                && root.TryGetProperty("pendingQuery", out var pqEl)
-                && pqEl.ValueKind == JsonValueKind.Object)
+            if (root.TryGetProperty("pendingQuery", out var pqEl) && pqEl.ValueKind == JsonValueKind.Object)
                 pendingQuery = ParsePendingQuery(pqEl);
+
+            // Infer intent from pending objects when LLM omits or forgets to set it
+            if (pendingTask != null && !string.Equals(intent, "create_task", StringComparison.OrdinalIgnoreCase))
+                intent = "create_task";
+            if (pendingUpdate != null && !string.Equals(intent, "update_task", StringComparison.OrdinalIgnoreCase))
+                intent = "update_task";
+            if (pendingQuery != null && !string.Equals(intent, "query_tasks", StringComparison.OrdinalIgnoreCase))
+                intent = "query_tasks";
 
             // Fallback: intent says create/update but the corresponding object is missing
             if (string.Equals(intent, "create_task", StringComparison.OrdinalIgnoreCase) && pendingTask == null)
             {
-                reply += "\n\n⚠️ Не удалось распознать задачу. Попробуйте сформулировать запрос иначе.";
+                reply += "\n\nНе удалось распознать задачу. Попробуйте сформулировать запрос иначе.";
                 intent = null;
             }
             if (string.Equals(intent, "update_task", StringComparison.OrdinalIgnoreCase) && pendingUpdate == null)
             {
-                reply += "\n\n⚠️ Не удалось распознать изменения задачи. Попробуйте сформулировать запрос иначе.";
+                reply += "\n\nНе удалось распознать изменения задачи. Попробуйте сформулировать запрос иначе.";
                 intent = null;
             }
 
@@ -724,7 +736,7 @@ namespace Tasky.Infrastructure.ExternalServices
         {
             var now = DateTime.UtcNow;
             _db.AiConversationHistory.AddRange(
-                new AiConversationHistory { UserId = userId, Role = "user",  Content = userMsg,      CreatedAt = now },
+                new AiConversationHistory { UserId = userId, Role = "user",  Content = userMsg, CreatedAt = now },
                 new AiConversationHistory { UserId = userId, Role = "model", Content = assistantMsg, CreatedAt = now.AddMilliseconds(1) }
             );
             await _db.SaveChangesAsync();

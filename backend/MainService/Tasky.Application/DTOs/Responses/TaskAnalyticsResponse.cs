@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Tasky.Application.DTOs.Responses
 {
     public class TaskAnalyticsResponse
@@ -13,13 +15,28 @@ namespace Tasky.Application.DTOs.Responses
 
     public class HistogramDataPoint
     {
-        public string Period { get; set; } = string.Empty;
-        public int Value { get; set; }
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = string.Empty;
+
+        // Completed tasks count in the sub-period (maps to "desktop" bar in chart)
+        [JsonPropertyName("desktop")]
+        public int Completed { get; set; }
+
+        // Hours spent in the sub-period (maps to "mobile" bar in chart)
+        [JsonPropertyName("mobile")]
+        public double Hours { get; set; }
     }
 
     public class PieChartDataPoint
     {
+        [JsonPropertyName("listName")]
         public string ListName { get; set; } = string.Empty;
+
+        [JsonPropertyName("taskCount")]
         public int TaskCount { get; set; }
+
+        // Hex color from the list entity, used as fill in pie chart
+        [JsonPropertyName("fill")]
+        public string Fill { get; set; } = string.Empty;
     }
 }

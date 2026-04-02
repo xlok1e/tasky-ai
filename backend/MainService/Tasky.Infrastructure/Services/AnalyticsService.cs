@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Tasky.Application.DTOs.Requests;
 using Tasky.Application.DTOs.Responses;
@@ -15,158 +16,191 @@ namespace Tasky.Infrastructure.Services
             _db = db;
         }
 
-#pragma warning disable CS8629
         public async Task<TaskAnalyticsResponse> GetAnalyticsAsync(int userId, TaskAnalyticsRequest request)
         {
             var startDate = request.StartDate.ToUniversalTime();
             var endDate = request.EndDate.ToUniversalTime();
+            var ruCulture = CultureInfo.GetCultureInfo("ru-RU");
+            var periodDays = (endDate - startDate).TotalDays;
 
+            // totalTasks = created in period; completedTasks = completed in period (intentionally different)
             var totalTasks = await _db.Tasks
-                .Where(t => t.UserId == userId && t.CreatedAt >= startDate && t.CreatedAt <= endDate)
-                .CountAsync();
+                .CountAsync(t => t.UserId == userId && t.CreatedAt >= startDate && t.CreatedAt <= endDate);
 
-            var completedTasks = await _db.Tasks
-                .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                .CountAsync();
+            // Load all completed tasks with their lists in a single query
+            var completedTasksRaw = await _db.Tasks
+                .Include(t => t.List)
+                .Where(t => t.UserId == userId && t.CompletedAt.HasValue
+                            && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
+                .ToListAsync();
 
-            var totalHoursSpent = await _db.ExecutionHistory
+            // Load all execution history finished in the period in a single query
+            var executionHistoryRaw = await _db.ExecutionHistory
                 .Include(eh => eh.Task)
-                .Where(eh => eh.Task.UserId == userId && eh.FinishedAt.HasValue && eh.FinishedAt >= startDate && eh.FinishedAt <= endDate)
-                .SumAsync(eh => (eh.FinishedAt.Value - eh.StartedAt).TotalHours);
+                .Where(eh => eh.Task.UserId == userId && eh.FinishedAt.HasValue
+                             && eh.FinishedAt >= startDate && eh.FinishedAt <= endDate)
+                .ToListAsync();
 
+            var completedTasks = completedTasksRaw.Count;
+            var totalHoursSpent = executionHistoryRaw
+                .Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours);
             var averagePerTask = completedTasks > 0 ? totalHoursSpent / completedTasks : 0;
 
-            var periodLength = (endDate - startDate).TotalDays;
-            string mostProductivePeriod = "";
-            List<HistogramDataPoint> histogramData = new();
+            var histogramData = BuildHistogramData(
+                completedTasksRaw, executionHistoryRaw, startDate, periodDays, ruCulture);
 
-            if (periodLength <= 1)
-            {
-                var hasData = await _db.Tasks
-                    .AnyAsync(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate);
+            var mostProductivePeriod = histogramData.Count > 0
+                ? histogramData.MaxBy(x => x.Completed)!.Date
+                : "Нет данных";
 
-                if (hasData)
+            var pieChartData = completedTasksRaw
+                .GroupBy(t => new
                 {
-                    var data = await _db.Tasks
-                        .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                        .GroupBy(t => t.CompletedAt.Value.Hour)
-                        .Select(g => new { Key = g.Key, Count = g.Count() })
-                        .OrderByDescending(x => x.Count)
-                        .FirstAsync();
-
-                    mostProductivePeriod = $"{data.Key}:00 - {data.Key + 1}:00";
-                }
-                else
+                    Name = t.List?.Name ?? "Inbox",
+                    Color = t.List?.Color ?? "#6366f1"
+                })
+                .Select(g => new PieChartDataPoint
                 {
-                    mostProductivePeriod = "Нет данных";
-                }
-
-                histogramData = await _db.Tasks
-                    .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                    .GroupBy(t => t.CompletedAt.Value.Hour)
-                    .Select(g => new HistogramDataPoint { Period = $"{g.Key}:00", Value = g.Count() })
-                    .ToListAsync();
-            }
-            else if (periodLength <= 7)
-            {
-                var hasData = await _db.Tasks
-                    .AnyAsync(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate);
-
-                if (hasData)
-                {
-                    var data = await _db.Tasks
-                        .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                        .GroupBy(t => t.CompletedAt.Value.DayOfWeek)
-                        .Select(g => new { Key = g.Key, Count = g.Count() })
-                        .OrderByDescending(x => x.Count)
-                        .FirstAsync();
-
-                    mostProductivePeriod = data.Key.ToString();
-                }
-                else
-                {
-                    mostProductivePeriod = "Нет данных";
-                }
-
-                histogramData = await _db.Tasks
-                    .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                    .GroupBy(t => t.CompletedAt.Value.DayOfWeek)
-                    .Select(g => new HistogramDataPoint { Period = g.Key.ToString(), Value = g.Count() })
-                    .ToListAsync();
-            }
-            else if (periodLength <= 31)
-            {
-                var hasData = await _db.Tasks
-                    .AnyAsync(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate);
-
-                if (hasData)
-                {
-                    var data = await _db.Tasks
-                        .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                        .GroupBy(t => (int)((t.CompletedAt.Value - startDate).TotalDays / 7) + 1)
-                        .Select(g => new { Key = g.Key, Count = g.Count() })
-                        .OrderByDescending(x => x.Count)
-                        .FirstAsync();
-
-                    mostProductivePeriod = $"{data.Key}-я неделя";
-                }
-                else
-                {
-                    mostProductivePeriod = "Нет данных";
-                }
-
-                histogramData = await _db.Tasks
-                    .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                    .GroupBy(t => (int)((t.CompletedAt.Value - startDate).TotalDays / 7) + 1)
-                    .Select(g => new HistogramDataPoint { Period = $"{g.Key}-я неделя", Value = g.Count() })
-                    .ToListAsync();
-            }
-            else
-            {
-                var hasData = await _db.Tasks
-                    .AnyAsync(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate);
-
-                if (hasData)
-                {
-                    var data = await _db.Tasks
-                        .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                        .GroupBy(t => new { Year = t.CompletedAt.Value.Year, Month = t.CompletedAt.Value.Month })
-                        .Select(g => new { Key = g.Key, Count = g.Count() })
-                        .OrderByDescending(x => x.Count)
-                        .FirstAsync();
-
-                    mostProductivePeriod = new DateTime(data.Key.Year, data.Key.Month, 1).ToString("MMMM yyyy");
-                }
-                else
-                {
-                    mostProductivePeriod = "Нет данных";
-                }
-
-                histogramData = await _db.Tasks
-                    .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                    .GroupBy(t => new { Year = t.CompletedAt.Value.Year, Month = t.CompletedAt.Value.Month })
-                    .Select(g => new HistogramDataPoint { Period = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMMM yyyy"), Value = g.Count() })
-                    .ToListAsync();
-            }
-
-            var pieChartData = await _db.Tasks
-                .Where(t => t.UserId == userId && t.CompletedAt.HasValue && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
-                .Include(t => t.List)
-                .GroupBy(t => t.List != null ? t.List.Name : "Inbox")
-                .Select(g => new PieChartDataPoint { ListName = g.Key, TaskCount = g.Count() })
-                .ToListAsync();
+                    ListName = g.Key.Name,
+                    TaskCount = g.Count(),
+                    Fill = g.Key.Color
+                })
+                .ToList();
 
             return new TaskAnalyticsResponse
             {
                 TotalTasks = totalTasks,
                 CompletedTasks = completedTasks,
-                TotalHoursSpent = totalHoursSpent,
-                AveragePerTask = averagePerTask,
+                TotalHoursSpent = Math.Round(totalHoursSpent, 2),
+                AveragePerTask = Math.Round(averagePerTask, 2),
                 MostProductivePeriod = mostProductivePeriod,
                 HistogramData = histogramData,
                 PieChartData = pieChartData
             };
         }
-#pragma warning restore CS8629
+
+        private static List<HistogramDataPoint> BuildHistogramData(
+            List<Tasky.Domain.Entities.TaskItem> completedTasks,
+            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
+            DateTime startDate,
+            double periodDays,
+            CultureInfo ruCulture)
+        {
+            if (periodDays <= 1)
+                return BuildByHour(completedTasks, executionHistory);
+
+            if (periodDays <= 7)
+                return BuildByDayOfWeek(completedTasks, executionHistory, ruCulture);
+
+            if (periodDays <= 31)
+                return BuildByWeek(completedTasks, executionHistory, startDate);
+
+            return BuildByMonth(completedTasks, executionHistory, ruCulture);
+        }
+
+        private static List<HistogramDataPoint> BuildByHour(
+            List<Tasky.Domain.Entities.TaskItem> completedTasks,
+            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory)
+        {
+            var completedByHour = completedTasks
+                .GroupBy(t => t.CompletedAt!.Value.Hour)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var hoursByHour = executionHistory
+                .GroupBy(eh => eh.FinishedAt!.Value.Hour)
+                .ToDictionary(g => g.Key,
+                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+
+            return completedByHour.Keys
+                .Union(hoursByHour.Keys)
+                .OrderBy(h => h)
+                .Select(h => new HistogramDataPoint
+                {
+                    Date = $"{h:D2}:00",
+                    Completed = completedByHour.GetValueOrDefault(h, 0),
+                    Hours = Math.Round(hoursByHour.GetValueOrDefault(h, 0), 1)
+                })
+                .ToList();
+        }
+
+        private static List<HistogramDataPoint> BuildByDayOfWeek(
+            List<Tasky.Domain.Entities.TaskItem> completedTasks,
+            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
+            CultureInfo ruCulture)
+        {
+            var completedByDay = completedTasks
+                .GroupBy(t => t.CompletedAt!.Value.DayOfWeek)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var hoursByDay = executionHistory
+                .GroupBy(eh => eh.FinishedAt!.Value.DayOfWeek)
+                .ToDictionary(g => g.Key,
+                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+
+            return completedByDay.Keys
+                .Union(hoursByDay.Keys)
+                .OrderBy(d => (int)d)
+                .Select(d => new HistogramDataPoint
+                {
+                    Date = ruCulture.DateTimeFormat.GetDayName(d),
+                    Completed = completedByDay.GetValueOrDefault(d, 0),
+                    Hours = Math.Round(hoursByDay.GetValueOrDefault(d, 0), 1)
+                })
+                .ToList();
+        }
+
+        private static List<HistogramDataPoint> BuildByWeek(
+            List<Tasky.Domain.Entities.TaskItem> completedTasks,
+            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
+            DateTime startDate)
+        {
+            int WeekNumber(DateTime dt) => (int)((dt - startDate).TotalDays / 7) + 1;
+
+            var completedByWeek = completedTasks
+                .GroupBy(t => WeekNumber(t.CompletedAt!.Value))
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var hoursByWeek = executionHistory
+                .GroupBy(eh => WeekNumber(eh.FinishedAt!.Value))
+                .ToDictionary(g => g.Key,
+                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+
+            return completedByWeek.Keys
+                .Union(hoursByWeek.Keys)
+                .OrderBy(w => w)
+                .Select(w => new HistogramDataPoint
+                {
+                    Date = $"{w}-я неделя",
+                    Completed = completedByWeek.GetValueOrDefault(w, 0),
+                    Hours = Math.Round(hoursByWeek.GetValueOrDefault(w, 0), 1)
+                })
+                .ToList();
+        }
+
+        private static List<HistogramDataPoint> BuildByMonth(
+            List<Tasky.Domain.Entities.TaskItem> completedTasks,
+            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
+            CultureInfo ruCulture)
+        {
+            var completedByMonth = completedTasks
+                .GroupBy(t => (t.CompletedAt!.Value.Year, t.CompletedAt.Value.Month))
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            var hoursByMonth = executionHistory
+                .GroupBy(eh => (eh.FinishedAt!.Value.Year, eh.FinishedAt.Value.Month))
+                .ToDictionary(g => g.Key,
+                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+
+            return completedByMonth.Keys
+                .Union(hoursByMonth.Keys)
+                .OrderBy(m => m.Year).ThenBy(m => m.Month)
+                .Select(m => new HistogramDataPoint
+                {
+                    Date = new DateTime(m.Year, m.Month, 1).ToString("MMMM yyyy", ruCulture),
+                    Completed = completedByMonth.GetValueOrDefault(m, 0),
+                    Hours = Math.Round(hoursByMonth.GetValueOrDefault(m, 0), 1)
+                })
+                .ToList();
+        }
     }
 }

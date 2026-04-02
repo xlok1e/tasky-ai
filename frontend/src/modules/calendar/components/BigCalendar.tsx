@@ -103,7 +103,7 @@ export function BigCalendar({
 	onDeleteEvent,
 }: BigCalendarProps) {
 	const calendarRef = useRef<HTMLDivElement>(null);
-	const contextMenu = useContextMenu();
+	const { isOpen: isContextMenuOpen, position: contextMenuPosition, setIsOpen: setContextMenuOpen, openFromMouseEvent, close: closeContextMenu } = useContextMenu();
 	const selectedEventRef = useRef<CalendarTaskEvent | null>(null);
 	const scrollLockRef = useRef<{
 		locked: boolean;
@@ -140,9 +140,9 @@ export function BigCalendar({
 	const handleEventContextMenu = useCallback(
 		(event: React.MouseEvent<HTMLElement>, calendarEvent: CalendarTaskEvent) => {
 			selectedEventRef.current = calendarEvent;
-			contextMenu.openFromMouseEvent(event);
+			openFromMouseEvent(event);
 		},
-		[contextMenu],
+		[openFromMouseEvent],
 	);
 
 	const handleDeleteContextEvent = useCallback(() => {
@@ -150,8 +150,18 @@ export function BigCalendar({
 
 		onDeleteEvent(selectedEventRef.current);
 		selectedEventRef.current = null;
-		contextMenu.close();
-	}, [contextMenu, onDeleteEvent]);
+		closeContextMenu();
+	}, [closeContextMenu, onDeleteEvent]);
+
+	const handleContextMenuOpenChange = useCallback(
+		(open: boolean) => {
+			setContextMenuOpen(open);
+			if (!open) {
+				selectedEventRef.current = null;
+			}
+		},
+		[setContextMenuOpen],
+	);
 
 	const lockScroll = useCallback(() => {
 		const container = calendarRef.current;
@@ -289,9 +299,9 @@ export function BigCalendar({
 			/>
 
 			<ContextActionsPopover
-				open={contextMenu.isOpen}
-				position={contextMenu.position}
-				onOpenChange={contextMenu.setIsOpen}
+				open={isContextMenuOpen}
+				position={contextMenuPosition}
+				onOpenChange={handleContextMenuOpenChange}
 			>
 				<div className="flex flex-col gap-1">
 					<Button

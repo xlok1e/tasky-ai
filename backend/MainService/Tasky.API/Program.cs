@@ -77,6 +77,8 @@ builder.Services.AddScoped<Tasky.Application.Interfaces.IListService, Tasky.Infr
 
 builder.Services.AddScoped<Tasky.Application.Interfaces.IUserService, Tasky.Infrastructure.Services.UserService>();
 
+builder.Services.AddScoped<Tasky.Application.Interfaces.IAnalyticsService, Tasky.Infrastructure.Services.AnalyticsService>();
+
 builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 {
     var token = builder.Configuration["Telegram:BotToken"]

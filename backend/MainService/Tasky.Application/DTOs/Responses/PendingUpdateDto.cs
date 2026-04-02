@@ -11,4 +11,5 @@ public sealed class PendingUpdateDto
     public DateTime? EndAt { get; init; }
     public bool? IsAllDay { get; init; }
     public TaskCompletionStatus? Status { get; init; }
+    public string? ListName { get; init; }
 }

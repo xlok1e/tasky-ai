@@ -11,6 +11,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 using Tasky.Domain.Entities;
+using Tasky.Domain.Enums;
 using Tasky.Infrastructure.Persistence;
 
 namespace Tasky.Infrastructure.Services;
@@ -75,10 +76,38 @@ public class TelegramBotService(
             return;
         }
 
-        // Обработка текстовых сообщений (ИИ-ассистент)
+        // Обработка текстовых сообщений
         if (message.Text is { } userMessage && !string.IsNullOrWhiteSpace(userMessage))
         {
-            await ProcessAiMessage(bot, chatId, userMessage, ct);
+            var user = await FindUserByChatIdAsync(chatId, ct);
+            if (user is null)
+            {
+                await bot.SendMessage(chatId,
+                    "Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
+                    cancellationToken: ct);
+                return;
+            }
+
+            if (userMessage == "/help" || userMessage == "❓ Помощь")
+            {
+                await SendHelpMessage(bot, chatId, ct);
+                return;
+            }
+
+            if (userMessage == "📝 Мои задачи" || userMessage == "/tasks")
+            {
+                await SendTasksMessage(bot, chatId, user, ct);
+                return;
+            }
+
+            if (userMessage == "📊 Статистика" || userMessage == "/stats")
+            {
+                await SendStatisticsMessage(bot, chatId, user, ct);
+                return;
+            }
+
+            // ИИ-ассистент
+            await ProcessAiMessage(bot, chatId, userMessage, user, ct);
             return;
         }
 
@@ -98,7 +127,7 @@ public class TelegramBotService(
         if (auth is null || auth.ExpiresAt < DateTime.UtcNow)
         {
             await bot.SendMessage(chatId,
-                "Недействительный или просроченный токен. Сгенерируйте новую ссылку в приложении.",
+                "❌ Недействительный или просроченный токен. Сгенерируйте новую ссылку в приложении.",
                 cancellationToken: ct);
             return;
         }
@@ -106,16 +135,40 @@ public class TelegramBotService(
         if (auth.IsUsed)
         {
             await bot.SendMessage(chatId,
-                $"Вы уже авторизованы! Ваш аккаунт: {auth.User?.Username ?? "Неизвестно"}",
+                $"✅ Вы уже авторизованы! Ваш аккаунт: {auth.User?.Username ?? "Неизвестно"}",
                 cancellationToken: ct);
             return;
         }
 
         await bot.SendMessage(chatId,
-            "Подтвердите свою личность, поделившись номером телефона:",
+            "📱 Подтвердите свою личность, поделившись номером телефона:",
             cancellationToken: ct);
 
         await SendKeyboardMessage(bot, chatId, "📱 Поделиться номером телефона:", ct);
+    }
+
+    private async Task SendHelpMessage(ITelegramBotClient bot, long chatId, CancellationToken ct)
+    {
+        var helpText =
+            "🤖 *Я — TaskyAI, твой умный ассистент\\.*\n\n" +
+            "Я помогаю управлять делами, понимая обычный язык\\. Тебе не нужно заполнять формы — просто пиши или говори\\.\n\n" +
+            "🎙 *Голосовое планирование:*\n" +
+            "Зажми микрофон и скажи: _«Запиши встречу с клиентом завтра в 11 утра»_\\. Я сам создам задачу\\.\n\n" +
+            "💡 *Что я умею:*\n" +
+            "• Создавать задачи из текста и голоса\n" +
+            "• Показывать статистику по задачам\n" +
+            "• Присылать утренние сводки планов\n" +
+            "• Напоминать о дедлайнах\n\n" +
+            "⚙️ *Твой рабочий день:*\n" +
+            "Я учитываю твои настройки рабочего времени при планировании задач\\.";
+
+        await bot.SendMessage(
+            chatId: chatId,
+            text: helpText,
+            parseMode: ParseMode.MarkdownV2,
+            replyMarkup: CreateMainKeyboard(),
+            cancellationToken: ct
+        );
     }
 
     private async Task ProcessPhoneNumber(ITelegramBotClient bot, long chatId, string phoneNumber, CancellationToken ct, Message message)
@@ -123,7 +176,6 @@ public class TelegramBotService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        // Ищем последний неиспользованный токен
         var auth = await db.TelegramAuthTokens
             .Include(t => t.User)
             .Where(t => !t.IsUsed && t.ExpiresAt > DateTime.UtcNow)
@@ -133,7 +185,7 @@ public class TelegramBotService(
         if (auth is null)
         {
             await bot.SendMessage(chatId,
-                "Нет активных токенов авторизации. Сгенерируйте новую ссылку в приложении.",
+                "❌ Нет активных токенов авторизации. Сгенерируйте новую ссылку в приложении.",
                 cancellationToken: ct);
             return;
         }
@@ -196,8 +248,9 @@ public class TelegramBotService(
 
         await bot.SendMessage(chatId,
             $"Авторизация успешна, {user.Username}!\n\nТеперь вы можете использовать TaskyAI через Telegram.",
-            replyMarkup: new ReplyKeyboardRemove(),
             cancellationToken: ct);
+
+        await SendHelpMessage(bot, chatId, ct);
     }
 
     private async Task ProcessVoiceMessage(ITelegramBotClient bot, long chatId, Voice voice, CancellationToken ct)
@@ -206,7 +259,7 @@ public class TelegramBotService(
         if (user is null)
         {
             await bot.SendMessage(chatId,
-                "Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
+                "❌ Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
                 cancellationToken: ct);
             return;
         }
@@ -230,7 +283,7 @@ public class TelegramBotService(
             {
                 logger.LogError(ex, "Error downloading voice file from Telegram for user {UserId}", user.Id);
                 await bot.SendMessage(chatId,
-                    "Ошибка при скачивании файла. Пожалуйста, попробуйте снова.",
+                    "❌ Ошибка при скачивании файла. Пожалуйста, попробуйте снова.",
                     cancellationToken: ct);
                 return;
             }
@@ -242,7 +295,7 @@ public class TelegramBotService(
             if (string.IsNullOrWhiteSpace(transcribedText))
             {
                 await bot.SendMessage(chatId,
-                    "Не удалось расшифровать голосовое сообщение. Пожалуйста, попробуйте снова или отправьте текстовое сообщение.",
+                    "❌ Не удалось расшифровать голосовое сообщение. Пожалуйста, попробуйте снова или отправьте текстовое сообщение.",
                     cancellationToken: ct);
                 logger.LogWarning("Failed to transcribe voice message for user {UserId}", user.Id);
                 return;
@@ -256,23 +309,9 @@ public class TelegramBotService(
         {
             logger.LogError(ex, "Error processing voice message for user {UserId}: {ErrorMessage}", user.Id, ex.Message);
             await bot.SendMessage(chatId,
-                "Ошибка при обработке голосового сообщения. Пожалуйста, попробуйте снова позже.",
+                "❌ Ошибка при обработке голосового сообщения. Пожалуйста, попробуйте снова позже.",
                 cancellationToken: ct);
         }
-    }
-
-    private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, CancellationToken ct)
-    {
-        var user = await FindUserByChatIdAsync(chatId, ct);
-        if (user is null)
-        {
-            await bot.SendMessage(chatId,
-                "Вы не авторизованы. Пожалуйста, авторизуйтесь через приложение.",
-                cancellationToken: ct);
-            return;
-        }
-
-        await ProcessAiMessage(bot, chatId, userMessage, user, ct);
     }
 
     private async Task ProcessAiMessage(ITelegramBotClient bot, long chatId, string userMessage, Tasky.Domain.Entities.User user, CancellationToken ct)
@@ -424,7 +463,41 @@ public class TelegramBotService(
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await db.Users.FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
+        return await db.Users
+            .Include(u => u.Settings)
+            .FirstOrDefaultAsync(u => u.TelegramId == chatId, ct);
+    }
+
+    private static DateTime ConvertToUserTime(DateTime utcDateTime, string? ianaTimeZone)
+    {
+        if (string.IsNullOrWhiteSpace(ianaTimeZone))
+            return utcDateTime;
+
+        try
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimeZone);
+            return TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, tz);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return utcDateTime;
+        }
+    }
+
+    private static string FormatUserFriendlyDate(DateTime localDateTime, DateTime nowLocal)
+    {
+        var dayDiff = (localDateTime.Date - nowLocal.Date).Days;
+        var time = localDateTime.ToString("HH:mm");
+
+        var dayLabel = dayDiff switch
+        {
+            0 => "Сегодня",
+            1 => "Завтра",
+            2 => "Послезавтра",
+            _ => localDateTime.ToString("d MMMM", new System.Globalization.CultureInfo("ru-RU"))
+        };
+
+        return $"{dayLabel} {time}";
     }
 
     private async Task SendKeyboardMessage(ITelegramBotClient bot, long chatId, string text, CancellationToken ct)
@@ -445,6 +518,89 @@ public class TelegramBotService(
             replyMarkup: keyboard,
             cancellationToken: ct);
     }
+
+    private async Task SendTasksMessage(ITelegramBotClient bot, long chatId, Tasky.Domain.Entities.User user, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var taskService = scope.ServiceProvider.GetRequiredService<ITaskService>();
+
+        var tasks = await taskService.GetAllAsync(user.Id, null, false, null, null, null, null, null);
+
+        var userTimeZone = user.Settings?.TimeZone;
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = ConvertToUserTime(nowUtc, userTimeZone);
+        var weekAheadLocal = nowLocal.Date.AddDays(7);
+
+        var upcomingTasks = tasks
+            .Where(t => t.Status != TaskCompletionStatus.Completed)
+            .Select(t =>
+            {
+                var effectiveDateUtc = t.StartAt ?? t.Deadline ?? t.EndAt;
+                var effectiveDateLocal = effectiveDateUtc.HasValue
+                    ? ConvertToUserTime(effectiveDateUtc.Value, userTimeZone)
+                    : (DateTime?)null;
+                return new { Task = t, EffectiveDate = effectiveDateLocal };
+            })
+            .Where(x => x.EffectiveDate.HasValue && x.EffectiveDate.Value >= nowLocal && x.EffectiveDate.Value.Date <= weekAheadLocal)
+            .OrderBy(x => x.EffectiveDate)
+            .ToList();
+
+        if (!upcomingTasks.Any())
+        {
+            await bot.SendMessage(chatId, "📝 Нет задач на ближайшие 7 дней.", replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+            return;
+        }
+
+        var taskList = string.Join("\n", upcomingTasks.Select(x =>
+        {
+            var date = FormatUserFriendlyDate(x.EffectiveDate!.Value, nowLocal);
+            return $"- {x.Task.Title} ({date})";
+        }));
+        var message = $"📝 Задачи на ближайшие 7 дней:\n{taskList}";
+
+        await bot.SendMessage(chatId, message, replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+    }
+
+    private async Task SendStatisticsMessage(ITelegramBotClient bot, long chatId, Tasky.Domain.Entities.User user, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var taskService = scope.ServiceProvider.GetRequiredService<ITaskService>();
+
+        var tasks = await taskService.GetAllAsync(user.Id, null, false, null, null, null, null, null);
+
+        if (!tasks.Any())
+        {
+            await bot.SendMessage(chatId, "📊 У вас пока нет задач.", replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+            return;
+        }
+
+        var tasksList = tasks.ToList();
+        var total = tasksList.Count;
+        var completed = tasksList.Count(t => t.Status == TaskCompletionStatus.Completed);
+        var active = total - completed;
+        var overdue = tasksList.Count(t => t.Status != TaskCompletionStatus.Completed &&
+            (t.Deadline ?? t.EndAt ?? t.StartAt) < DateTime.UtcNow);
+
+        var statsText =
+            $"📊 Ваша статистика:\n\n" +
+            $"📋 Всего задач: {total}\n" +
+            $"✅ Выполнено: {completed}\n" +
+            $"🔄 Активных: {active}\n" +
+            $"⚠️ Просрочено: {overdue}";
+
+        await bot.SendMessage(chatId, statsText, replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+    }
+
+    private static ReplyKeyboardMarkup CreateMainKeyboard() =>
+        new(new[]
+        {
+            new[] { new KeyboardButton("📝 Мои задачи"), new KeyboardButton("📊 Статистика") },
+            new[] { new KeyboardButton("❓ Помощь") }
+        })
+        {
+            ResizeKeyboard = true,
+            IsPersistent = true
+        };
 
     private async Task HandleErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken ct)
     {

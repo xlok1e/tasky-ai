@@ -145,6 +145,7 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
 	(config: InternalAxiosRequestConfig) => {
 		const token = getCookie(TOKEN_COOKIE)
+		config.headers['ngrok-skip-browser-warning'] = 'true'
 		if (token) {
 			config.headers.Authorization = `Bearer ${token}`
 		}

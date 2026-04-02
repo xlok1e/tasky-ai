@@ -38,6 +38,9 @@ function Calendar({
 			onMonthChange={handleMonthChange}
 			locale={ru}
 			className={cn('p-2', className)}
+			formatters={{
+				formatWeekdayName: day => format(day, 'EEEEEE', { locale: ru }),
+			}}
 			classNames={{
 				months: 'flex flex-col sm:flex-row gap-2',
 				month: 'flex flex-col gap-1',
@@ -52,10 +55,10 @@ function Calendar({
 				weekday:
 					'pb-0.5 text-center text-[0.7rem] font-normal text-muted-foreground',
 				week: '',
-				day: 'p-0.5',
+				day: 'p-[1px]',
 				day_button: cn(
 					buttonVariants({ variant: 'ghost' }),
-					'h-auto w-full aspect-square rounded-md p-0 font-normal aria-selected:opacity-100',
+					'h-auto! w-full aspect-square rounded-md p-0 font-normal aria-selected:opacity-100',
 				),
 				selected:
 					'rounded-md bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
@@ -63,10 +66,11 @@ function Calendar({
 				outside: 'text-muted-foreground opacity-50 aria-selected:bg-accent/50',
 				disabled: 'text-muted-foreground opacity-50',
 				hidden: 'invisible',
+				footer: 'border-t-0',
 				...classNames,
 			}}
 			footer={
-				<div className='mt-1 flex items-center justify-between pt-1'>
+				<div className='flex items-center justify-between'>
 					<button
 						type='button'
 						aria-label='Предыдущий месяц'

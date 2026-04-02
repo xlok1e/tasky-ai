@@ -38,7 +38,6 @@ import {
 import { useTaskModal } from '../store/task-modal.store'
 import { useTasksStore } from '../store/tasks.store'
 import { useListsStore } from '@modules/lists/store/lists.store'
-import { Spinner } from '@shared/ui/spinner'
 import { TaskPriority } from '../types/task.enums'
 
 type DateTabValue = 'start' | 'end'
@@ -174,8 +173,6 @@ export function TaskModal() {
 	const [draftStartTime, setDraftStartTime] = useState('')
 	const [draftEndTime, setDraftEndTime] = useState('')
 	const [draftMonth, setDraftMonth] = useState<Date>(new Date())
-	const [isSaving, setIsSaving] = useState(false)
-	const [isDeleting, setIsDeleting] = useState(false)
 
 	useEffect(() => {
 		if (isOpen) {
@@ -198,8 +195,6 @@ export function TaskModal() {
 			setIsDatePopoverOpen(false)
 			setIsPriorityPopoverOpen(false)
 			setIsListPopoverOpen(false)
-			setIsSaving(false)
-			setIsDeleting(false)
 		}
 	}, [isOpen, editingTask, prefill])
 
@@ -217,7 +212,105 @@ export function TaskModal() {
 		return lists.find(list => list.id === listId) ?? null
 	}, [listId, lists])
 
-	const isBusy = isSaving || isDeleting
+	const buildTaskPayload = (): {
+		trimmed: string
+		nextDescription: string | null
+		nextStartDate: Date | null
+		nextEndDate: Date | null
+	} | null => {
+		const trimmed = title.trim()
+		if (!trimmed) {
+			if (editingTask) {
+				toastMessage.showError('Название задачи не может быть пустым')
+			}
+			return null
+		}
+
+		const normalizedDescription = description.trim()
+		const nextDescription =
+			normalizedDescription.length > 0 ? normalizedDescription : null
+		const nextStartDate =
+			startDate && isValid(startDate) ? new Date(startDate) : null
+		const nextEndDate = endDate && isValid(endDate) ? new Date(endDate) : null
+
+		if (startDate && !nextStartDate) {
+			toastMessage.showError('Некорректная дата начала')
+			return null
+		}
+		if (endDate && !nextEndDate) {
+			toastMessage.showError('Некорректная дата окончания')
+			return null
+		}
+		if (
+			nextStartDate &&
+			nextEndDate &&
+			nextEndDate.getTime() < nextStartDate.getTime()
+		) {
+			toastMessage.showError('Дата окончания не может быть раньше даты начала')
+			return null
+		}
+
+		return { trimmed, nextDescription, nextStartDate, nextEndDate }
+	}
+
+	const handleDialogOpenChange = (open: boolean) => {
+		if (open) {
+			return
+		}
+
+		const payload = buildTaskPayload()
+		if (payload === null && !editingTask) {
+			close()
+			return
+		}
+		if (payload === null) {
+			return
+		}
+
+		close()
+
+		if (editingTask) {
+			const hasChanges =
+				payload.trimmed !== editingTask.title ||
+				payload.nextDescription !== (editingTask.description ?? null) ||
+				isCompleted !== editingTask.isCompleted ||
+				priority !== editingTask.priority ||
+				listId !== (editingTask.listId ?? null) ||
+				(payload.nextStartDate?.getTime() ?? null) !==
+					(editingTask.startDate?.getTime() ?? null) ||
+				(payload.nextEndDate?.getTime() ?? null) !==
+					(editingTask.endDate?.getTime() ?? null)
+
+			if (hasChanges) {
+				void updateTask(editingTask.id, {
+					title: payload.trimmed,
+					description: payload.nextDescription,
+					isCompleted,
+					isAllDay: false,
+					startDate: payload.nextStartDate,
+					endDate: payload.nextEndDate,
+					priority,
+					listId,
+				})
+			}
+		} else {
+			void addTask({
+				title: payload.trimmed,
+				description: payload.nextDescription,
+				startDate: payload.nextStartDate,
+				endDate: payload.nextEndDate,
+				isAllDay: false,
+				listId,
+				priority,
+			})
+		}
+	}
+
+	const handleDelete = () => {
+		if (!editingTask) return
+		close()
+		void deleteTask(editingTask.id)
+	}
 
 	const resetDateDraft = () => {
 		setDraftStartDate(startDate)
@@ -342,96 +435,6 @@ export function TaskModal() {
 		setDraftMonth(nextStart)
 	}
 
-	const persistTaskChanges = async (): Promise<boolean> => {
-		const trimmed = title.trim()
-		if (!trimmed) {
-			if (editingTask) {
-				toastMessage.showError('Название задачи не может быть пустым')
-				return false
-			}
-			return true
-		}
-
-		const normalizedDescription = description.trim()
-		const nextDescription =
-			normalizedDescription.length > 0 ? normalizedDescription : null
-		const nextStartDate =
-			startDate && isValid(startDate) ? new Date(startDate) : null
-		const nextEndDate = endDate && isValid(endDate) ? new Date(endDate) : null
-
-		if (startDate && !nextStartDate) {
-			toastMessage.showError('Некорректная дата начала')
-			return false
-		}
-
-		if (endDate && !nextEndDate) {
-			toastMessage.showError('Некорректная дата окончания')
-			return false
-		}
-
-		if (
-			nextStartDate &&
-			nextEndDate &&
-			nextEndDate.getTime() < nextStartDate.getTime()
-		) {
-			toastMessage.showError('Дата окончания не может быть раньше даты начала')
-			return false
-		}
-
-		setIsSaving(true)
-		try {
-			if (editingTask) {
-				await updateTask(editingTask.id, {
-					title: trimmed,
-					description: nextDescription,
-					isCompleted,
-					isAllDay: false,
-					startDate: nextStartDate,
-					endDate: nextEndDate,
-					priority,
-					listId,
-				})
-			} else {
-				await addTask({
-					title: trimmed,
-					description: nextDescription,
-					startDate: nextStartDate,
-					endDate: nextEndDate,
-					isAllDay: false,
-					listId,
-					priority,
-				})
-			}
-			return true
-		} finally {
-			setIsSaving(false)
-		}
-	}
-
-	const handleDialogOpenChange = (open: boolean) => {
-		if (open || isBusy) {
-			return
-		}
-
-		void (async () => {
-			const hasChangesSaved = await persistTaskChanges()
-			if (hasChangesSaved) {
-				close()
-			}
-		})()
-	}
-
-	const handleDelete = async () => {
-		if (!editingTask) return
-		setIsDeleting(true)
-		try {
-			await deleteTask(editingTask.id)
-			close()
-		} finally {
-			setIsDeleting(false)
-		}
-	}
-
 	return (
 		<Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
 			<DialogContent className='w-[429px] max-w-[429px] gap-0 overflow-hidden p-0 sm:max-w-[429px] [&>button]:hidden'>
@@ -470,7 +473,8 @@ export function TaskModal() {
 								</PopoverTrigger>
 								<PopoverContent
 									align='start'
-									className='w-[300px] p-0 overflow-hidden'
+									collisionPadding={12}
+									className='w-[260px] p-0 overflow-hidden'
 								>
 									{/* Tabs */}
 									<div className='flex border-b border-border'>
@@ -612,18 +616,19 @@ export function TaskModal() {
 													onChange={event =>
 														handleDraftTimeChange(dateTab, event.target.value)
 													}
-													className='h-8 max-w-[90px] text-sm'
+													className='h-8 flex-1 text-sm'
 												/>
 											</div>
 										</div>
 									)}
 
 									{/* Footer */}
-									<div className='flex items-center justify-end gap-2 border-t border-border px-4 py-2.5'>
+									<div className='flex items-center gap-2 border-t border-border px-4 py-2.5'>
 										<Button
 											type='button'
 											variant='ghost'
 											size='sm'
+											className='flex-1'
 											onClick={handleCancelDateSelection}
 										>
 											Отмена
@@ -631,6 +636,7 @@ export function TaskModal() {
 										<Button
 											type='button'
 											size='sm'
+											className='flex-1'
 											onClick={handleSaveDateSelection}
 										>
 											Сохранить
@@ -781,9 +787,8 @@ export function TaskModal() {
 								size='icon'
 								className='text-destructive hover:text-destructive'
 								onClick={handleDelete}
-								disabled={isBusy}
 							>
-								{isDeleting ? <Spinner /> : <Trash2 className='size-4' />}
+								<Trash2 className='size-4' />
 							</Button>
 						)}
 					</div>

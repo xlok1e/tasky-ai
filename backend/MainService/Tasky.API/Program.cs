@@ -58,7 +58,13 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy
-            .WithOrigins("http://localhost:3000") 
+            .WithOrigins(
+                "http://localhost:3000",
+                "http://taskyai.ru",
+                "https://taskyai.ru",
+                "http://www.taskyai.ru",
+                "https://www.taskyai.ru"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();

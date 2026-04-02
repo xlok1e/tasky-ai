@@ -4,8 +4,14 @@ import { toast } from 'sonner'
 
 const TOKEN_COOKIE = 'access_token'
 
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
+
 export const API_URL =
-	process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5050'
+	typeof configuredApiUrl === 'string' && configuredApiUrl.trim().length > 0
+		? configuredApiUrl
+		: process.env.NODE_ENV === 'development'
+			? 'http://localhost:5050'
+			: ''
 
 const apiClient = axios.create({
 	baseURL: API_URL,

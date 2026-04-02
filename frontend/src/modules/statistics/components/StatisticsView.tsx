@@ -8,6 +8,7 @@ import { StatisticsHeader } from "@modules/statistics/components/StatisticsHeade
 import { StatisticsMetricsGrid } from "@modules/statistics/components/StatisticsMetricsGrid";
 import { StatisticsProductivePeriod } from "@modules/statistics/components/StatisticsProductivePeriod";
 import { useStatisticsView } from "@modules/statistics/hooks/useStatisticsView";
+import { PageLoader } from "@shared/ui/page-loader";
 
 export function StatisticsView() {
 	const statisticsView = useStatisticsView();
@@ -23,6 +24,8 @@ export function StatisticsView() {
 
 			{statisticsView.error ? (
 				<StatisticsErrorState onRetry={statisticsView.handleRetry} />
+			) : statisticsView.isLoading && !statisticsView.hasHistogramData && !statisticsView.hasPieChartData ? (
+				<PageLoader />
 			) : (
 				<div className="flex flex-col gap-6">
 					<StatisticsMetricsGrid items={statisticsView.metrics} isLoading={statisticsView.isLoading} />

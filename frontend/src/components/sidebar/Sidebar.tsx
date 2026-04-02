@@ -181,7 +181,9 @@ export function Sidebar() {
 					href='/settings'
 					className={cn(
 						'flex items-center rounded-[6px] transition-colors overflow-hidden',
-						pathname === '/settings' ? 'bg-accent' : 'hover:bg-accent/50',
+						pathname === '/settings'
+							? 'bg-accent text-accent-foreground'
+							: 'hover:bg-accent/50',
 						isCollapsed
 							? 'w-[40px] h-[40px] justify-center'
 							: 'gap-2 w-full px-2.5 py-1 text-[18px]',

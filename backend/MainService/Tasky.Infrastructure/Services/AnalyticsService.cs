@@ -3,12 +3,15 @@ using Microsoft.EntityFrameworkCore;
 using Tasky.Application.DTOs.Requests;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
+using Tasky.Domain.Entities;
 using Tasky.Infrastructure.Persistence;
 
 namespace Tasky.Infrastructure.Services
 {
     public class AnalyticsService : IAnalyticsService
     {
+        private const int DefaultTimeZoneOffsetMinutes = 180;
+
         private readonly AppDbContext _db;
 
         public AnalyticsService(AppDbContext db)
@@ -18,45 +21,52 @@ namespace Tasky.Infrastructure.Services
 
         public async Task<TaskAnalyticsResponse> GetAnalyticsAsync(int userId, TaskAnalyticsRequest request)
         {
-            var startDate = request.StartDate.ToUniversalTime();
-            var endDate = request.EndDate.ToUniversalTime();
+            var startDateUtc = request.StartDate.ToUniversalTime();
+            var endDateUtc = request.EndDate.ToUniversalTime();
+            var timeZoneOffsetMinutes = request.TimeZoneOffsetMinutes ?? DefaultTimeZoneOffsetMinutes;
+            var startDateLocal = ConvertToLocal(startDateUtc, timeZoneOffsetMinutes);
+            var endDateLocal = ConvertToLocal(endDateUtc, timeZoneOffsetMinutes);
             var ruCulture = CultureInfo.GetCultureInfo("ru-RU");
-            var periodDays = (endDate - startDate).TotalDays;
+            var periodDays = (endDateLocal - startDateLocal).TotalDays;
 
-            var allTasksInPeriod = await _db.Tasks
+            var tasksInPeriod = await _db.Tasks
                 .Include(t => t.List)
                 .Where(t => t.UserId == userId
                     && t.StartAt != null
-                    && t.StartAt >= startDate && t.StartAt <= endDate)
+                    && t.StartAt >= startDateUtc && t.StartAt <= endDateUtc)
                 .ToListAsync();
 
-            var totalTasks = allTasksInPeriod.Count;
-
-   
-            var completedTasksRaw = allTasksInPeriod
-                .Where(t => t.CompletedAt.HasValue)
-                .ToList();
-
-           
-            var executionHistoryRaw = await _db.ExecutionHistory
-                .Include(eh => eh.Task)
-                .Where(eh => eh.Task.UserId == userId && eh.FinishedAt.HasValue
-                             && eh.FinishedAt >= startDate && eh.FinishedAt <= endDate)
+            var completedTasksRaw = await _db.Tasks
+                .Include(t => t.List)
+                .Where(t => t.UserId == userId
+                    && t.CompletedAt.HasValue
+                    && t.CompletedAt >= startDateUtc
+                    && t.CompletedAt <= endDateUtc)
                 .ToListAsync();
 
+            var totalTasks = tasksInPeriod.Count;
             var completedTasks = completedTasksRaw.Count;
-            var totalHoursSpent = executionHistoryRaw
-                .Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours);
-            var averagePerTask = completedTasks > 0 ? totalHoursSpent / completedTasks : 0;
+            var totalHoursSpent = tasksInPeriod
+                .Where(t => t.StartAt.HasValue && t.EndAt.HasValue && !t.IsAllDay)
+                .Sum(t => (t.EndAt!.Value - t.StartAt!.Value).TotalHours);
+            var tasksWithDuration = tasksInPeriod
+                .Count(t => t.StartAt.HasValue && t.EndAt.HasValue && !t.IsAllDay);
+            var averagePerTask = tasksWithDuration > 0 ? totalHoursSpent / tasksWithDuration : 0;
 
             var histogramData = BuildHistogramData(
-                completedTasksRaw, executionHistoryRaw, startDate, endDate, periodDays, ruCulture);
+                tasksInPeriod,
+                completedTasksRaw,
+                startDateLocal,
+                endDateLocal,
+                periodDays,
+                ruCulture,
+                timeZoneOffsetMinutes);
 
-            var mostProductivePeriod = allTasksInPeriod.Count > 0
-                ? ComputeMostProductivePeriod(allTasksInPeriod, periodDays, ruCulture)
+            var mostProductivePeriod = tasksInPeriod.Count > 0
+                ? ComputeMostProductivePeriod(tasksInPeriod, periodDays, ruCulture, timeZoneOffsetMinutes)
                 : "Нет данных";
 
-            var pieChartData = allTasksInPeriod
+            var pieChartData = tasksInPeriod
                 .GroupBy(t => new
                 {
                     Name = t.List?.Name ?? "Inbox",
@@ -66,7 +76,9 @@ namespace Tasky.Infrastructure.Services
                 {
                     ListName = g.Key.Name,
                     TaskCount = g.Count(),
-                    CompletedCount = g.Count(t => t.CompletedAt.HasValue),
+                    CompletedCount = g.Count(t => t.CompletedAt.HasValue
+                        && t.CompletedAt >= startDateUtc
+                        && t.CompletedAt <= endDateUtc),
                     Fill = g.Key.Color
                 })
                 .ToList();
@@ -84,174 +96,274 @@ namespace Tasky.Infrastructure.Services
         }
 
         private static List<HistogramDataPoint> BuildHistogramData(
-            List<Tasky.Domain.Entities.TaskItem> completedTasks,
-            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
-            DateTime startDate,
-            DateTime endDate,
+            List<TaskItem> allTasks,
+            List<TaskItem> completedTasks,
+            DateTime startDateLocal,
+            DateTime endDateLocal,
             double periodDays,
-            CultureInfo ruCulture)
-        {
-            if (periodDays <= 1)
-                return BuildByHour(completedTasks, executionHistory);
-
-            if (periodDays <= 7)
-                return BuildByDayInRange(completedTasks, executionHistory, startDate, endDate, ruCulture, includeDayName: true);
-
-            if (periodDays <= 31)
-                return BuildByDayInRange(completedTasks, executionHistory, startDate, endDate, ruCulture, includeDayName: false);
-
-            return BuildByMonthInRange(completedTasks, executionHistory, startDate, endDate, ruCulture);
-        }
-
-        private static string ComputeMostProductivePeriod(
-            List<Tasky.Domain.Entities.TaskItem> tasks,
-            double periodDays,
-            CultureInfo ruCulture)
+            CultureInfo ruCulture,
+            int timeZoneOffsetMinutes)
         {
             if (periodDays <= 1)
             {
-                var bestHour = tasks
-                    .Where(t => t.StartAt.HasValue)
-                    .GroupBy(t => t.StartAt!.Value.Hour)
-                    .MaxBy(g => g.Count())!.Key;
+                return BuildByHour(
+                    allTasks,
+                    completedTasks,
+                    startDateLocal,
+                    endDateLocal,
+                    timeZoneOffsetMinutes);
+            }
+
+            if (periodDays <= 7)
+            {
+                return BuildByDayInRange(
+                    allTasks,
+                    completedTasks,
+                    startDateLocal,
+                    endDateLocal,
+                    ruCulture,
+                    includeDayName: true,
+                    timeZoneOffsetMinutes);
+            }
+
+            if (periodDays <= 31)
+            {
+                return BuildByDayInRange(
+                    allTasks,
+                    completedTasks,
+                    startDateLocal,
+                    endDateLocal,
+                    ruCulture,
+                    includeDayName: false,
+                    timeZoneOffsetMinutes);
+            }
+
+            return BuildByMonthInRange(
+                allTasks,
+                completedTasks,
+                startDateLocal,
+                endDateLocal,
+                ruCulture,
+                timeZoneOffsetMinutes);
+        }
+
+        private static string ComputeMostProductivePeriod(
+            List<TaskItem> tasks,
+            double periodDays,
+            CultureInfo ruCulture,
+            int timeZoneOffsetMinutes)
+        {
+            var withStartAt = tasks.Where(t => t.StartAt.HasValue).ToList();
+            if (withStartAt.Count == 0) return "Нет данных";
+
+            if (periodDays <= 1)
+            {
+                var bestHour = withStartAt
+                    .Select(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes))
+                    .GroupBy(date => date.Hour)
+                    .OrderByDescending(group => group.Count())
+                    .ThenBy(group => group.Key)
+                    .First()
+                    .Key;
+
                 return $"{bestHour:D2}:00";
             }
 
             if (periodDays <= 7)
             {
-                var bestDay = tasks
-                    .Where(t => t.StartAt.HasValue)
-                    .GroupBy(t => t.StartAt!.Value.Date)
-                    .MaxBy(g => g.Count())!.Key;
-                var dayName = ruCulture.DateTimeFormat.GetAbbreviatedDayName(bestDay.DayOfWeek);
-                return $"{dayName}, {bestDay.Day} {bestDay.ToString("MMMM", ruCulture)}";
+                var bestDay = withStartAt
+                    .Select(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes).Date)
+                    .GroupBy(date => date)
+                    .OrderByDescending(group => group.Count())
+                    .ThenBy(group => group.Key)
+                    .First()
+                    .Key;
+
+                return $"{FormatDayName(bestDay, ruCulture)}, {bestDay.ToString("d MMMM", ruCulture)}";
             }
 
             if (periodDays <= 31)
             {
-                var bestDay = tasks
-                    .Where(t => t.StartAt.HasValue)
-                    .GroupBy(t => t.StartAt!.Value.Date)
-                    .MaxBy(g => g.Count())!.Key;
-                return $"{bestDay.Day} {bestDay.ToString("MMMM yyyy", ruCulture)}";
+                var bestDay = withStartAt
+                    .Select(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes).Date)
+                    .GroupBy(date => date)
+                    .OrderByDescending(group => group.Count())
+                    .ThenBy(group => group.Key)
+                    .First()
+                    .Key;
+
+                return bestDay.ToString("d MMMM yyyy", ruCulture);
             }
 
-            // Yearly: group by month
-            var bestMonth = tasks
-                .Where(t => t.StartAt.HasValue)
-                .GroupBy(t => new DateTime(t.StartAt!.Value.Year, t.StartAt.Value.Month, 1))
-                .MaxBy(g => g.Count())!.Key;
-            var isSingleYear = tasks
-                .Where(t => t.StartAt.HasValue)
-                .Select(t => t.StartAt!.Value.Year)
-                .Distinct().Count() == 1;
+            var bestMonth = withStartAt
+                .Select(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes))
+                .GroupBy(date => new DateTime(date.Year, date.Month, 1))
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key)
+                .First()
+                .Key;
+
+            var isSingleYear = withStartAt
+                .Select(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes).Year)
+                .Distinct()
+                .Count() == 1;
+
             return bestMonth.ToString(isSingleYear ? "MMMM" : "MMMM yyyy", ruCulture);
         }
 
         private static List<HistogramDataPoint> BuildByHour(
-            List<Tasky.Domain.Entities.TaskItem> completedTasks,
-            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory)
+            List<TaskItem> allTasks,
+            List<TaskItem> completedTasks,
+            DateTime startDateLocal,
+            DateTime endDateLocal,
+            int timeZoneOffsetMinutes)
         {
+            var totalByHour = allTasks
+                .Where(t => t.StartAt.HasValue)
+                .GroupBy(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes).Hour)
+                .ToDictionary(group => group.Key, group => group.Count());
+
             var completedByHour = completedTasks
-                .GroupBy(t => t.CompletedAt!.Value.Hour)
-                .ToDictionary(g => g.Key, g => g.Count());
+                .GroupBy(task => ConvertToLocal(task.CompletedAt!.Value, timeZoneOffsetMinutes).Hour)
+                .ToDictionary(group => group.Key, group => group.Count());
 
-            var hoursByHour = executionHistory
-                .GroupBy(eh => eh.FinishedAt!.Value.Hour)
-                .ToDictionary(g => g.Key,
-                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+            var hoursByHour = allTasks
+                .Where(t => t.StartAt.HasValue && t.EndAt.HasValue && !t.IsAllDay)
+                .GroupBy(t => ConvertToLocal(t.StartAt!.Value, timeZoneOffsetMinutes).Hour)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(t => (t.EndAt!.Value - t.StartAt!.Value).TotalHours));
 
-            return completedByHour.Keys
-                .Union(hoursByHour.Keys)
-                .OrderBy(h => h)
-                .Select(h => new HistogramDataPoint
+            var currentHour = new DateTime(
+                startDateLocal.Year,
+                startDateLocal.Month,
+                startDateLocal.Day,
+                startDateLocal.Hour,
+                0,
+                0);
+
+            var hourPoints = new List<DateTime>();
+            while (currentHour <= endDateLocal)
+            {
+                hourPoints.Add(currentHour);
+                currentHour = currentHour.AddHours(1);
+            }
+
+            return hourPoints
+                .Select(point => point.Hour)
+                .Distinct()
+                .Select(hour => new HistogramDataPoint
                 {
-                    Date = $"{h:D2}:00",
-                    Completed = completedByHour.GetValueOrDefault(h, 0),
-                    Hours = Math.Round(hoursByHour.GetValueOrDefault(h, 0), 1)
+                    Date = $"{hour:D2}:00",
+                    Total = totalByHour.GetValueOrDefault(hour, 0),
+                    Completed = completedByHour.GetValueOrDefault(hour, 0),
+                    Hours = Math.Round(hoursByHour.GetValueOrDefault(hour, 0), 1)
                 })
                 .ToList();
         }
 
-        /// <summary>
-        /// Строит гистограмму по дням диапазона.
-        /// Для недельного периода (includeDayName=true): метка "Пн, 25.03".
-        /// Для месячного периода (includeDayName=false): метка "25".
-        /// Все дни диапазона включаются, даже если задач нет (0).
-        /// </summary>
         private static List<HistogramDataPoint> BuildByDayInRange(
-            List<Tasky.Domain.Entities.TaskItem> completedTasks,
-            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
-            DateTime startDate,
-            DateTime endDate,
+            List<TaskItem> allTasks,
+            List<TaskItem> completedTasks,
+            DateTime startDateLocal,
+            DateTime endDateLocal,
             CultureInfo ruCulture,
-            bool includeDayName)
+            bool includeDayName,
+            int timeZoneOffsetMinutes)
         {
+            var totalByDate = allTasks
+                .Where(t => t.StartAt.HasValue)
+                .GroupBy(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes).Date)
+                .ToDictionary(group => group.Key, group => group.Count());
+
             var completedByDate = completedTasks
-                .GroupBy(t => t.CompletedAt!.Value.Date)
-                .ToDictionary(g => g.Key, g => g.Count());
+                .GroupBy(task => ConvertToLocal(task.CompletedAt!.Value, timeZoneOffsetMinutes).Date)
+                .ToDictionary(group => group.Key, group => group.Count());
 
-            var hoursByDate = executionHistory
-                .GroupBy(eh => eh.FinishedAt!.Value.Date)
-                .ToDictionary(g => g.Key,
-                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+            var hoursByDate = allTasks
+                .Where(t => t.StartAt.HasValue && t.EndAt.HasValue && !t.IsAllDay)
+                .GroupBy(t => ConvertToLocal(t.StartAt!.Value, timeZoneOffsetMinutes).Date)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(t => (t.EndAt!.Value - t.StartAt!.Value).TotalHours));
 
-            var totalDays = (int)(endDate.Date - startDate.Date).TotalDays + 1;
+            var totalDays = (endDateLocal.Date - startDateLocal.Date).Days + 1;
 
             return Enumerable.Range(0, totalDays)
-                .Select(i => startDate.Date.AddDays(i))
+                .Select(offset => startDateLocal.Date.AddDays(offset))
                 .Select(day => new HistogramDataPoint
                 {
                     Date = includeDayName
-                        ? $"{ruCulture.DateTimeFormat.GetAbbreviatedDayName(day.DayOfWeek)} {day.Day:D2}.{day.Month:D2}"
+                        ? $"{FormatDayName(day, ruCulture)} {day:dd.MM}"
                         : $"{day.Day}",
+                    Total = totalByDate.GetValueOrDefault(day, 0),
                     Completed = completedByDate.GetValueOrDefault(day, 0),
                     Hours = Math.Round(hoursByDate.GetValueOrDefault(day, 0), 1)
                 })
                 .ToList();
         }
 
-        /// <summary>
-        /// Строит гистограмму по месяцам диапазона.
-        /// Метка: "Январь" (если все месяцы в одном году) или "Январь 2025" (если разные годы).
-        /// Все месяцы диапазона включаются, даже если задач нет (0).
-        /// </summary>
         private static List<HistogramDataPoint> BuildByMonthInRange(
-            List<Tasky.Domain.Entities.TaskItem> completedTasks,
-            List<Tasky.Domain.Entities.ExecutionHistory> executionHistory,
-            DateTime startDate,
-            DateTime endDate,
-            CultureInfo ruCulture)
+            List<TaskItem> allTasks,
+            List<TaskItem> completedTasks,
+            DateTime startDateLocal,
+            DateTime endDateLocal,
+            CultureInfo ruCulture,
+            int timeZoneOffsetMinutes)
         {
+            var totalByMonth = allTasks
+                .Where(t => t.StartAt.HasValue)
+                .Select(task => ConvertToLocal(task.StartAt!.Value, timeZoneOffsetMinutes))
+                .GroupBy(date => (date.Year, date.Month))
+                .ToDictionary(group => group.Key, group => group.Count());
+
             var completedByMonth = completedTasks
-                .GroupBy(t => (t.CompletedAt!.Value.Year, t.CompletedAt.Value.Month))
-                .ToDictionary(g => g.Key, g => g.Count());
+                .Select(task => ConvertToLocal(task.CompletedAt!.Value, timeZoneOffsetMinutes))
+                .GroupBy(date => (date.Year, date.Month))
+                .ToDictionary(group => group.Key, group => group.Count());
 
-            var hoursByMonth = executionHistory
-                .GroupBy(eh => (eh.FinishedAt!.Value.Year, eh.FinishedAt.Value.Month))
-                .ToDictionary(g => g.Key,
-                    g => g.Sum(eh => (eh.FinishedAt!.Value - eh.StartedAt).TotalHours));
+            var hoursByMonth = allTasks
+                .Where(t => t.StartAt.HasValue && t.EndAt.HasValue && !t.IsAllDay)
+                .Select(t => new
+                {
+                    StartAtLocal = ConvertToLocal(t.StartAt!.Value, timeZoneOffsetMinutes),
+                    HoursSpent = (t.EndAt!.Value - t.StartAt!.Value).TotalHours
+                })
+                .GroupBy(t => (t.StartAtLocal.Year, t.StartAtLocal.Month))
+                .ToDictionary(group => group.Key, group => group.Sum(t => t.HoursSpent));
 
-            var isSingleYear = startDate.Year == endDate.Year;
+            var firstMonth = new DateTime(startDateLocal.Year, startDateLocal.Month, 1);
+            var lastMonth = new DateTime(endDateLocal.Year, endDateLocal.Month, 1);
+            var totalMonths = ((lastMonth.Year - firstMonth.Year) * 12) + lastMonth.Month - firstMonth.Month + 1;
+            var isSingleYear = firstMonth.Year == lastMonth.Year;
             var dateFormat = isSingleYear ? "MMMM" : "MMMM yyyy";
 
-            var firstMonth = new DateTime(startDate.Year, startDate.Month, 1);
-            var lastMonth = new DateTime(endDate.Year, endDate.Month, 1);
-            var totalMonths = ((lastMonth.Year - firstMonth.Year) * 12) + lastMonth.Month - firstMonth.Month + 1;
-
             return Enumerable.Range(0, totalMonths)
-                .Select(i => firstMonth.AddMonths(i))
-                .Select(month =>
+                .Select(offset => firstMonth.AddMonths(offset))
+                .Select(month => new HistogramDataPoint
                 {
-                    var key = (month.Year, month.Month);
-                    return new HistogramDataPoint
-                    {
-                        Date = month.ToString(dateFormat, ruCulture),
-                        Completed = completedByMonth.GetValueOrDefault(key, 0),
-                        Hours = Math.Round(hoursByMonth.GetValueOrDefault(key, 0), 1)
-                    };
+                    Date = month.ToString(dateFormat, ruCulture),
+                    Total = totalByMonth.GetValueOrDefault((month.Year, month.Month), 0),
+                    Completed = completedByMonth.GetValueOrDefault((month.Year, month.Month), 0),
+                    Hours = Math.Round(hoursByMonth.GetValueOrDefault((month.Year, month.Month), 0), 1)
                 })
                 .ToList();
+        }
+
+        private static DateTime ConvertToLocal(DateTime utcDateTime, int timeZoneOffsetMinutes)
+        {
+            return DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc).AddMinutes(timeZoneOffsetMinutes);
+        }
+
+        private static string FormatDayName(DateTime date, CultureInfo culture)
+        {
+            var abbreviatedDayName = culture.DateTimeFormat.GetAbbreviatedDayName(date.DayOfWeek);
+            if (string.IsNullOrWhiteSpace(abbreviatedDayName))
+            {
+                return abbreviatedDayName;
+            }
+
+            return char.ToUpper(abbreviatedDayName[0], culture) + abbreviatedDayName[1..];
         }
     }
 }

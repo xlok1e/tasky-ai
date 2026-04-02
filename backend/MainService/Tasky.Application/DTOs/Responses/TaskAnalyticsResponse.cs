@@ -41,6 +41,10 @@ namespace Tasky.Application.DTOs.Responses
         [JsonPropertyName("date")]
         public string Date { get; set; } = string.Empty;
 
+        /// <summary>Общее количество задач в подпериоде.</summary>
+        [JsonPropertyName("total")]
+        public int Total { get; set; }
+
         /// <summary>Количество завершённых задач в подпериоде (отображается как "desktop" в графике).</summary>
         [JsonPropertyName("desktop")]
         public int Completed { get; set; }

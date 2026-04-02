@@ -1,4 +1,4 @@
-import { CalendarDays, ChartNoAxesCombined, Inbox, Settings } from "lucide-react";
+import { CalendarDays, ChartNoAxesCombined, Inbox } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface SidebarItem {
@@ -27,6 +27,5 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
 		label: "Статистика",
 		icon: ChartNoAxesCombined,
 		href: "/statistics",
-		disabled: true,
 	},
 ];

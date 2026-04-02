@@ -740,6 +740,9 @@ button.rbc-input::-moz-focus-inner {
 	overflow: hidden;
 	line-clamp: 1;
 }
+.rbc-month-view .calendar-event-time {
+	display: none;
+}
 
 .rbc-event.event-compact {
 	padding-top: 0px;

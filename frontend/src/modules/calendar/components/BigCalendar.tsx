@@ -1,24 +1,27 @@
-"use client";
+'use client'
 
-import { useCallback, useMemo, useEffect, useRef, ComponentType } from "react";
-import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
-import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
-import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
-import "./big-calendar.css";
-import { format, parse, startOfWeek, getDay } from "date-fns";
-import { ru } from "date-fns/locale";
-import { Clock, Trash2 } from "lucide-react";
-import type { CalendarProps } from "react-big-calendar";
-import type { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
-import { useContextMenu } from "@shared/lib/use-context-menu";
-import { Button } from "@shared/ui/button";
-import { ContextActionsPopover } from "@shared/ui/context-actions-popover";
-import type { Task } from "@modules/tasks/types/task.types";
-import { getContrastColor, hexToRgba } from "@modules/calendar/utils/calendar.utils";
+import { useCallback, useMemo, useEffect, useRef, ComponentType } from 'react'
+import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
+import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop'
+import 'react-big-calendar/lib/addons/dragAndDrop/styles.css'
+import './big-calendar.css'
+import { format, parse, startOfWeek, getDay } from 'date-fns'
+import { ru } from 'date-fns/locale'
+import { Clock, Trash2 } from 'lucide-react'
+import type { CalendarProps } from 'react-big-calendar'
+import type { EventInteractionArgs } from 'react-big-calendar/lib/addons/dragAndDrop'
+import { useContextMenu } from '@shared/lib/use-context-menu'
+import { Button } from '@shared/ui/button'
+import { ContextActionsPopover } from '@shared/ui/context-actions-popover'
+import type { Task } from '@modules/tasks/types/task.types'
+import {
+	getContrastColor,
+	hexToRgba,
+} from '@modules/calendar/utils/calendar.utils'
 
-import type { View } from "react-big-calendar";
+import type { View } from 'react-big-calendar'
 
-const locales = { ru };
+const locales = { ru }
 
 const localizer = dateFnsLocalizer({
 	format,
@@ -26,69 +29,69 @@ const localizer = dateFnsLocalizer({
 	startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 1 }),
 	getDay,
 	locales,
-});
+})
 
 export interface CalendarTaskEvent {
-	resource: Task;
-	title: string;
-	start: Date;
-	end: Date;
-	allDay?: boolean;
-	colorHex?: string;
+	resource: Task
+	title: string
+	start: Date
+	end: Date
+	allDay?: boolean
+	colorHex?: string
 }
 
 const DnDCalendar = withDragAndDrop<CalendarTaskEvent>(
 	Calendar as ComponentType<CalendarProps<CalendarTaskEvent>>,
-);
+)
 
 const MESSAGES = {
-	week: "Неделя",
-	day: "День",
-	month: "Месяц",
-	agenda: "Список",
-	today: "Сегодня",
-	previous: "←",
-	next: "→",
-	noEventsInRange: "Нет задач",
+	week: 'Неделя',
+	day: 'День',
+	month: 'Месяц',
+	agenda: 'Список',
+	today: 'Сегодня',
+	previous: '←',
+	next: '→',
+	noEventsInRange: 'Нет задач',
 	showMore: (count: number) => `+${count} ещё`,
-};
+}
 
 interface CalendarEventProps {
-	event: CalendarTaskEvent;
+	event: CalendarTaskEvent
 }
 
 function CalendarEventContent({ event }: CalendarEventProps) {
-	const task = event.resource;
-	const durationMs = event.end.getTime() - event.start.getTime();
-	const isTall = durationMs >= 45 * 60 * 1000;
+	const task = event.resource
+	const durationMs = event.end.getTime() - event.start.getTime()
+	const isTall = durationMs >= 45 * 60 * 1000
 	const timeStr =
 		!event.allDay && isTall
-			? `${format(event.start, "HH:mm")} — ${format(event.end, "HH:mm")}`
-			: null;
+			? `${format(event.start, 'HH:mm')} — ${format(event.end, 'HH:mm')}`
+			: null
 
 	return (
-		<div className="calendar-event-inner">
-			<p className="calendar-event-title">{task.title}</p>
+		<div className='calendar-event-inner'>
+			<p className='calendar-event-title'>{task.title}</p>
 			{timeStr && (
-				<div className="calendar-event-time">
-					<Clock size={10} strokeWidth={2} className="shrink-0" />
+				<div className='calendar-event-time'>
+					<Clock size={10} strokeWidth={2} className='shrink-0' />
 					<span>{timeStr}</span>
 				</div>
 			)}
 		</div>
-	);
+	)
 }
 
 interface BigCalendarProps {
-	events: CalendarTaskEvent[];
-	date: Date;
-	view: View;
-	onNavigate: (date: Date) => void;
-	onSelectSlot: (start: Date, end: Date) => void;
-	onSelectEvent: (event: CalendarTaskEvent) => void;
-	onEventDrop: (args: EventInteractionArgs<CalendarTaskEvent>) => void;
-	onEventResize: (args: EventInteractionArgs<CalendarTaskEvent>) => void;
-	onDeleteEvent: (event: CalendarTaskEvent) => void;
+	events: CalendarTaskEvent[]
+	date: Date
+	view: View
+	onNavigate: (date: Date) => void
+	onSelectSlot: (start: Date, end: Date) => void
+	onSelectEvent: (event: CalendarTaskEvent) => void
+	onEventDrop: (args: EventInteractionArgs<CalendarTaskEvent>) => void
+	onEventResize: (args: EventInteractionArgs<CalendarTaskEvent>) => void
+	onDeleteEvent: (event: CalendarTaskEvent) => void
 }
 
 export function BigCalendar({
@@ -102,180 +105,197 @@ export function BigCalendar({
 	onEventResize,
 	onDeleteEvent,
 }: BigCalendarProps) {
-	const calendarRef = useRef<HTMLDivElement>(null);
-	const { isOpen: isContextMenuOpen, position: contextMenuPosition, setIsOpen: setContextMenuOpen, openFromMouseEvent, close: closeContextMenu } = useContextMenu();
-	const selectedEventRef = useRef<CalendarTaskEvent | null>(null);
+	const calendarRef = useRef<HTMLDivElement>(null)
+	const {
+		isOpen: isContextMenuOpen,
+		position: contextMenuPosition,
+		setIsOpen: setContextMenuOpen,
+		openFromMouseEvent,
+		close: closeContextMenu,
+	} = useContextMenu()
+	const selectedEventRef = useRef<CalendarTaskEvent | null>(null)
 	const scrollLockRef = useRef<{
-		locked: boolean;
-		savedScrollTop: number;
-		timeContent: HTMLElement | null;
-		scrollHandler: (() => void) | null;
-		mouseUpHandler: (() => void) | null;
+		locked: boolean
+		savedScrollTop: number
+		timeContent: HTMLElement | null
+		scrollHandler: (() => void) | null
+		mouseUpHandler: (() => void) | null
 	}>({
 		locked: false,
 		savedScrollTop: 0,
 		timeContent: null,
 		scrollHandler: null,
 		mouseUpHandler: null,
-	});
+	})
 
 	const unlockScroll = useCallback(() => {
-		const lock = scrollLockRef.current;
-		if (!lock.locked) return;
+		const lock = scrollLockRef.current
+		if (!lock.locked) return
 
 		if (lock.timeContent && lock.scrollHandler) {
-			lock.timeContent.removeEventListener("scroll", lock.scrollHandler);
+			lock.timeContent.removeEventListener('scroll', lock.scrollHandler)
 		}
 		if (lock.mouseUpHandler) {
-			document.removeEventListener("mouseup", lock.mouseUpHandler);
-			document.removeEventListener("touchend", lock.mouseUpHandler);
+			document.removeEventListener('mouseup', lock.mouseUpHandler)
+			document.removeEventListener('touchend', lock.mouseUpHandler)
 		}
 
-		lock.locked = false;
-		lock.scrollHandler = null;
-		lock.mouseUpHandler = null;
-		lock.timeContent = null;
-	}, []);
+		lock.locked = false
+		lock.scrollHandler = null
+		lock.mouseUpHandler = null
+		lock.timeContent = null
+	}, [])
 
 	const handleEventContextMenu = useCallback(
-		(event: React.MouseEvent<HTMLElement>, calendarEvent: CalendarTaskEvent) => {
-			selectedEventRef.current = calendarEvent;
-			openFromMouseEvent(event);
+		(
+			event: React.MouseEvent<HTMLElement>,
+			calendarEvent: CalendarTaskEvent,
+		) => {
+			selectedEventRef.current = calendarEvent
+			openFromMouseEvent(event)
 		},
 		[openFromMouseEvent],
-	);
+	)
 
 	const handleDeleteContextEvent = useCallback(() => {
-		if (!selectedEventRef.current) return;
+		if (!selectedEventRef.current) return
 
-		onDeleteEvent(selectedEventRef.current);
-		selectedEventRef.current = null;
-		closeContextMenu();
-	}, [closeContextMenu, onDeleteEvent]);
+		onDeleteEvent(selectedEventRef.current)
+		selectedEventRef.current = null
+		closeContextMenu()
+	}, [closeContextMenu, onDeleteEvent])
 
 	const handleContextMenuOpenChange = useCallback(
 		(open: boolean) => {
-			setContextMenuOpen(open);
+			setContextMenuOpen(open)
 			if (!open) {
-				selectedEventRef.current = null;
+				selectedEventRef.current = null
 			}
 		},
 		[setContextMenuOpen],
-	);
+	)
 
 	const lockScroll = useCallback(() => {
-		const container = calendarRef.current;
-		if (!container) return;
+		const container = calendarRef.current
+		if (!container) return
 
-		const timeContent = container.querySelector<HTMLElement>(".rbc-time-content");
-		if (!timeContent) return;
+		const timeContent =
+			container.querySelector<HTMLElement>('.rbc-time-content')
+		if (!timeContent) return
 
-		const lock = scrollLockRef.current;
-		lock.locked = true;
-		lock.savedScrollTop = timeContent.scrollTop;
-		lock.timeContent = timeContent;
+		const lock = scrollLockRef.current
+		lock.locked = true
+		lock.savedScrollTop = timeContent.scrollTop
+		lock.timeContent = timeContent
 
 		const scrollHandler = () => {
 			if (lock.locked && lock.timeContent) {
-				lock.timeContent.scrollTop = lock.savedScrollTop;
+				lock.timeContent.scrollTop = lock.savedScrollTop
 			}
-		};
-		lock.scrollHandler = scrollHandler;
-		timeContent.addEventListener("scroll", scrollHandler);
+		}
+		lock.scrollHandler = scrollHandler
+		timeContent.addEventListener('scroll', scrollHandler)
 
 		const mouseUpHandler = () => {
 			// Delay unlock slightly so any final scroll events are still caught
-			setTimeout(() => unlockScroll(), 50);
-		};
-		lock.mouseUpHandler = mouseUpHandler;
-		document.addEventListener("mouseup", mouseUpHandler);
-		document.addEventListener("touchend", mouseUpHandler);
-	}, [unlockScroll]);
+			setTimeout(() => unlockScroll(), 50)
+		}
+		lock.mouseUpHandler = mouseUpHandler
+		document.addEventListener('mouseup', mouseUpHandler)
+		document.addEventListener('touchend', mouseUpHandler)
+	}, [unlockScroll])
 
 	// Cleanup on unmount
 	useEffect(() => {
-		return () => unlockScroll();
-	}, [unlockScroll]);
+		return () => unlockScroll()
+	}, [unlockScroll])
 
 	const handleDragStart = useCallback(
-		({ event }: { event: CalendarTaskEvent; action: string; direction: string }) => {
-			if (event.allDay) {
-				lockScroll();
-			}
+		(_args: {
+			event: CalendarTaskEvent
+			action: string
+			direction: string
+		}) => {
+			lockScroll()
 		},
 		[lockScroll],
-	);
+	)
 
 	const handleEventDrop = useCallback(
 		(args: EventInteractionArgs<CalendarTaskEvent>) => {
-			unlockScroll();
-			onEventDrop(args);
+			unlockScroll()
+			onEventDrop(args)
 		},
 		[onEventDrop, unlockScroll],
-	);
+	)
 
 	const handleEventResize = useCallback(
 		(args: EventInteractionArgs<CalendarTaskEvent>) => {
-			unlockScroll();
-			onEventResize(args);
+			unlockScroll()
+			onEventResize(args)
 		},
 		[onEventResize, unlockScroll],
-	);
+	)
 
 	const eventPropGetter = useCallback<
-		NonNullable<CalendarProps<CalendarTaskEvent>["eventPropGetter"]>
-	>((event) => {
-		const style: React.CSSProperties & Record<string, string> = {};
-		const colorHex = event.colorHex;
+		NonNullable<CalendarProps<CalendarTaskEvent>['eventPropGetter']>
+	>(event => {
+		const style: React.CSSProperties & Record<string, string> = {}
+		const colorHex = event.colorHex
 
 		if (colorHex) {
-			style.backgroundColor = hexToRgba(colorHex, 0.5);
-			style.color = getContrastColor(colorHex);
+			style.backgroundColor = hexToRgba(colorHex, 0.5)
+			style.color = getContrastColor(colorHex)
 		} else {
-			style.backgroundColor = hexToRgba("#809671", 0.7);
-			style.color = getContrastColor("#809671");
+			style.backgroundColor = hexToRgba('#809671', 0.7)
+			style.color = getContrastColor('#809671')
 		}
 
-		const durationMs = event.end.getTime() - event.start.getTime();
-		const isCompact = durationMs <= 15 * 60 * 1000;
+		const durationMs = event.end.getTime() - event.start.getTime()
+		const isCompact = durationMs <= 15 * 60 * 1000
 
 		const className = [
-			event.resource.isCompleted ? "event-completed" : "event-variant-primary",
-			isCompact ? "event-compact" : null,
+			event.resource.isCompleted ? 'event-completed' : 'event-variant-primary',
+			isCompact ? 'event-compact' : null,
 		]
 			.filter(Boolean)
-			.join(" ");
+			.join(' ')
 
-		return { style, className };
-	}, []);
+		return { style, className }
+	}, [])
 
-	const components = useMemo<CalendarProps<CalendarTaskEvent>["components"]>(
+	const components = useMemo<CalendarProps<CalendarTaskEvent>['components']>(
 		() => ({
 			week: {
 				header: ({ date: headerDate }: { date: Date }) => (
-					<div className="flex flex-col items-center py-1">
-						<span>{format(headerDate, "EEEEEE", { locale: ru })}</span>
-						<span>{format(headerDate, "d")}</span>
+					<div className='flex flex-col items-center py-1'>
+						<span>{format(headerDate, 'EEEEEE', { locale: ru })}</span>
+						<span>{format(headerDate, 'd')}</span>
 					</div>
 				),
 			},
 			event: ({ event }: CalendarEventProps) => (
-				<div className="h-full" onContextMenu={(mouseEvent) => handleEventContextMenu(mouseEvent, event)}>
+				<div
+					className='h-full'
+					onContextMenu={mouseEvent =>
+						handleEventContextMenu(mouseEvent, event)
+					}
+				>
 					<CalendarEventContent event={event} />
 				</div>
 			),
 		}),
 		[handleEventContextMenu],
-	);
+	)
 
 	return (
-		<div ref={calendarRef} style={{ height: "100%", width: "100%" }}>
+		<div ref={calendarRef} style={{ height: '100%', width: '100%' }}>
 			<DnDCalendar
 				localizer={localizer}
-				culture="ru"
+				culture='ru'
 				messages={MESSAGES}
-				style={{ height: "100%", width: "100%" }}
-				className="border border-border rounded-lg"
+				style={{ height: '100%', width: '100%' }}
+				className='border border-border rounded-lg'
 				defaultView={Views.WEEK}
 				view={view}
 				onView={() => {}}
@@ -284,10 +304,11 @@ export function BigCalendar({
 				events={events}
 				selectable
 				resizable
+				popup
 				draggableAccessor={() => true}
-				resizableAccessor={(event) => !event.allDay}
+				resizableAccessor={event => !event.allDay}
 				eventPropGetter={eventPropGetter}
-				onSelectSlot={(slot) => onSelectSlot(slot.start, slot.end)}
+				onSelectSlot={slot => onSelectSlot(slot.start, slot.end)}
 				onSelectEvent={onSelectEvent}
 				onEventDrop={handleEventDrop}
 				onEventResize={handleEventResize}
@@ -303,18 +324,18 @@ export function BigCalendar({
 				position={contextMenuPosition}
 				onOpenChange={handleContextMenuOpenChange}
 			>
-				<div className="flex flex-col gap-1">
+				<div className='flex flex-col gap-1'>
 					<Button
-						type="button"
-						variant="ghost"
-						className="w-full justify-start px-3 text-destructive hover:text-destructive"
+						type='button'
+						variant='ghost'
+						className='w-full justify-start px-3 text-destructive hover:text-destructive'
 						onClick={handleDeleteContextEvent}
 					>
-						<Trash2 className="size-4" />
+						<Trash2 className='size-4' />
 						Удалить
 					</Button>
 				</div>
 			</ContextActionsPopover>
 		</div>
-	);
+	)
 }

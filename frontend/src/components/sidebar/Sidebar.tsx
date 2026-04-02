@@ -89,41 +89,58 @@ export function Sidebar() {
 					))}
 				</nav>
 				{!isConnected && (
-					<div
-						className={cn(
-							' transition-all duration-0',
-							isCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100',
-						)}
-					>
-						<div className='h-px bg-border my-4 -mx-[18px] ml-[1px]' />
+					<>
+						<div
+							className={cn(
+								'transition-all duration-0',
+								isCollapsed
+									? 'max-h-0 opacity-0 overflow-hidden'
+									: 'max-h-96 opacity-100',
+							)}
+						>
+							<div className='h-px bg-border my-4 -mx-[18px] ml-[1px]' />
 
-						<div className='flex items-center w-full justify-between px-2.5 pr-0 mb-[8px]'>
-							<div className='flex items-center gap-2'>
-								<LayoutList className='size-[18px]' strokeWidth={1.5} />
-								<label className='text-[18px] cursor-pointer whitespace-nowrap'>
-									Списки
-								</label>
+							<div className='flex items-center w-full justify-between px-2.5 pr-0 mb-[8px]'>
+								<div className='flex items-center gap-2'>
+									<LayoutList className='size-[18px]' strokeWidth={1.5} />
+									<label className='text-[18px] cursor-pointer whitespace-nowrap'>
+										Списки
+									</label>
+								</div>
+								<Button
+									className='w-[32px] h-[32px] rounded-[6px]'
+									variant='ghost'
+									onClick={openListsModal}
+								>
+									<CirclePlus className='size-[18px]' strokeWidth={1.5} />
+								</Button>
 							</div>
-							<Button
-								className='w-[32px] h-[32px] rounded-[6px]'
-								variant='ghost'
-								onClick={openListsModal}
-							>
-								<CirclePlus className='size-[18px]' strokeWidth={1.5} />
-							</Button>
+
+							<div className='flex flex-col gap-1.5'>
+								{lists.map(list => (
+									<SidebarListItem
+										key={list.id}
+										list={list}
+										isActive={pathname === `/lists/${list.id}`}
+										isCollapsed={isCollapsed}
+									/>
+								))}
+							</div>
 						</div>
 
-						<div className='flex flex-col gap-1.5'>
-							{lists.map(list => (
-								<SidebarListItem
-									key={list.id}
-									list={list}
-									isActive={pathname === `/lists/${list.id}`}
-									isCollapsed={isCollapsed}
-								/>
-							))}
-						</div>
-					</div>
+						{isCollapsed && (
+							<>
+								<div className='h-px bg-border my-4 -mx-[18px]' />
+								<Button
+									className='w-[32px] h-[32px] rounded-[6px] mx-auto'
+									variant='ghost'
+									onClick={openListsModal}
+								>
+									<CirclePlus className='size-[18px]' strokeWidth={1.5} />
+								</Button>
+							</>
+						)}
+					</>
 				)}
 			</div>
 

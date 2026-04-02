@@ -1,31 +1,31 @@
-import { CalendarDays, ChartNoAxesCombined, Inbox } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { CalendarDays, ChartNoAxesCombined, Inbox } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
 export interface SidebarItem {
-	id: string;
-	label: string;
-	icon: LucideIcon;
-	href: string;
-	disabled?: boolean;
+	id: string
+	label: string
+	icon: LucideIcon
+	href: string
+	disabled?: boolean
 }
 
 export const SIDEBAR_ITEMS: SidebarItem[] = [
 	{
-		id: "calendar",
-		label: "Календарь",
+		id: 'calendar',
+		label: 'Календарь',
 		icon: CalendarDays,
-		href: "/calendar",
+		href: '/calendar',
 	},
 	{
-		id: "inbox",
-		label: "Входящие задаи",
+		id: 'inbox',
+		label: 'Входящие задачи',
 		icon: Inbox,
-		href: "/inbox",
+		href: '/inbox',
 	},
 	{
-		id: "statistics",
-		label: "Статистика",
+		id: 'statistics',
+		label: 'Статистика',
 		icon: ChartNoAxesCombined,
-		href: "/statistics",
+		href: '/statistics',
 	},
-];
+]

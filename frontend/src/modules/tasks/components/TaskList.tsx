@@ -25,12 +25,12 @@ type SortDirection = 'asc' | 'desc'
 
 const DATE_SORT_OPTIONS: Array<{ value: SortDirection; label: string }> = [
 	{ value: 'asc', label: 'По дате' },
-	{ value: 'desc', label: 'Сначала поздние' },
+	{ value: 'desc', label: 'Сначала новые' },
 ]
 
 const PRIORITY_SORT_OPTIONS: Array<{ value: SortDirection; label: string }> = [
-	{ value: 'desc', label: 'По приоритету' },
-	{ value: 'asc', label: 'Сначала низкий' },
+	{ value: 'desc', label: 'По убыванию' },
+	{ value: 'asc', label: 'По возрастанию' },
 ]
 
 interface LoadTasksOptions {

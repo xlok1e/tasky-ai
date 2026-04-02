@@ -216,13 +216,13 @@ namespace Tasky.Infrastructure.Services
         {
             IOrderedQueryable<TaskItem>? orderedQuery = null;
 
-            if (!string.IsNullOrWhiteSpace(dateOrder))
-                orderedQuery = ApplyEffectiveDateOrdering(query, dateOrder);
-
             if (!string.IsNullOrWhiteSpace(priorityOrder))
+                orderedQuery = ApplyPriorityOrdering(query, priorityOrder);
+
+            if (!string.IsNullOrWhiteSpace(dateOrder))
                 orderedQuery = orderedQuery is null
-                    ? ApplyPriorityOrdering(query, priorityOrder)
-                    : ApplyPriorityOrdering(orderedQuery, priorityOrder);
+                    ? ApplyEffectiveDateOrdering(query, dateOrder)
+                    : ApplyEffectiveDateOrdering(orderedQuery, dateOrder);
 
             if (orderedQuery is not null)
                 return orderedQuery.ThenByDescending(task => task.CreatedAt);
@@ -248,6 +248,17 @@ namespace Tasky.Infrastructure.Services
                 ? query.OrderBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
                     .ThenByDescending(task => task.Deadline ?? task.EndAt ?? task.StartAt)
                 : query.OrderBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
+                    .ThenBy(task => task.Deadline ?? task.EndAt ?? task.StartAt);
+        }
+
+        private static IOrderedQueryable<TaskItem> ApplyEffectiveDateOrdering(
+            IOrderedQueryable<TaskItem> query,
+            string dateOrder)
+        {
+            return dateOrder.Equals("desc", StringComparison.OrdinalIgnoreCase)
+                ? query.ThenBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
+                    .ThenByDescending(task => task.Deadline ?? task.EndAt ?? task.StartAt)
+                : query.ThenBy(task => (task.Deadline ?? task.EndAt ?? task.StartAt).HasValue ? 0 : 1)
                     .ThenBy(task => task.Deadline ?? task.EndAt ?? task.StartAt);
         }
 

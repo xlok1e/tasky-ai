@@ -157,6 +157,7 @@ export function TaskModal() {
 	const { addTask, updateTask, deleteTask } = useTasksStore()
 	const lists = useListsStore(s => s.lists)
 
+	const [isEditMode, setIsEditMode] = useState(false)
 	const [title, setTitle] = useState('')
 	const [description, setDescription] = useState('')
 	const [isCompleted, setIsCompleted] = useState(false)
@@ -176,6 +177,7 @@ export function TaskModal() {
 
 	useEffect(() => {
 		if (isOpen) {
+			setIsEditMode(!!editingTask)
 			setTitle(editingTask?.title ?? '')
 			setDescription(editingTask?.description ?? '')
 			setIsCompleted(editingTask?.isCompleted ?? false)
@@ -258,18 +260,14 @@ export function TaskModal() {
 			return
 		}
 
-		const payload = buildTaskPayload()
-		if (payload === null && !editingTask) {
-			close()
-			return
-		}
-		if (payload === null) {
-			return
-		}
-
-		close()
-
 		if (editingTask) {
+			const payload = buildTaskPayload()
+			if (payload === null) {
+				return
+			}
+
+			close()
+
 			const hasChanges =
 				payload.trimmed !== editingTask.title ||
 				payload.nextDescription !== (editingTask.description ?? null) ||
@@ -294,16 +292,26 @@ export function TaskModal() {
 				})
 			}
 		} else {
-			void addTask({
-				title: payload.trimmed,
-				description: payload.nextDescription,
-				startDate: payload.nextStartDate,
-				endDate: payload.nextEndDate,
-				isAllDay: false,
-				listId,
-				priority,
-			})
+			close()
 		}
+	}
+
+	const handleCreate = () => {
+		const payload = buildTaskPayload()
+		if (payload === null) {
+			return
+		}
+
+		close()
+		void addTask({
+			title: payload.trimmed,
+			description: payload.nextDescription,
+			startDate: payload.nextStartDate,
+			endDate: payload.nextEndDate,
+			isAllDay: false,
+			listId,
+			priority,
+		})
 	}
 
 	const handleDelete = () => {
@@ -540,8 +548,23 @@ export function TaskModal() {
 										))}
 									</div>
 
+									{/* Calendar */}
+									<div className='px-3 pt-2 pb-2'>
+										<Calendar
+											mode='single'
+											selected={
+												(dateTab === 'start' ? draftStartDate : draftEndDate) ??
+												undefined
+											}
+											onSelect={value => handleDateSelect(dateTab, value)}
+											month={draftMonth}
+											onMonthChange={setDraftMonth}
+											className='p-0'
+										/>
+									</div>
+
 									{/* Date chip for active tab */}
-									<div className='flex items-center justify-between px-4 pt-3 pb-1'>
+									<div className='flex items-center justify-between px-4 pt-1 pb-2'>
 										{(dateTab === 'start' ? draftStartDate : draftEndDate) ? (
 											<span className='rounded-full bg-primary/10 px-3 py-0.5 text-sm font-medium text-primary'>
 												{format(
@@ -575,21 +598,6 @@ export function TaskModal() {
 												<X className='size-3.5' />
 											</button>
 										)}
-									</div>
-
-									{/* Calendar */}
-									<div className='px-3 pb-2'>
-										<Calendar
-											mode='single'
-											selected={
-												(dateTab === 'start' ? draftStartDate : draftEndDate) ??
-												undefined
-											}
-											onSelect={value => handleDateSelect(dateTab, value)}
-											month={draftMonth}
-											onMonthChange={setDraftMonth}
-											className='p-0'
-										/>
 									</div>
 
 									{/* Time input */}
@@ -695,7 +703,7 @@ export function TaskModal() {
 						placeholder='Название задачи'
 						value={title}
 						onChange={event => setTitle(event.target.value)}
-						className='h-auto border-0 bg-transparent p-0 text-[18px]! leading-[1.05] font-bold shadow-none focus-visible:ring-0'
+								className='h-auto border-0 bg-transparent! p-0 text-[18px]! leading-[1.05] font-bold shadow-none focus-visible:ring-0'
 						autoFocus
 					/>
 					<Textarea
@@ -703,7 +711,7 @@ export function TaskModal() {
 						placeholder='Описание задачи'
 						value={description}
 						onChange={event => setDescription(event.target.value)}
-						className='min-h-[80px] resize-none border-0 bg-transparent p-0 text-[18px]! shadow-none focus-visible:ring-0'
+							className='min-h-[80px] resize-none border-0 bg-transparent! p-0 text-[18px]! shadow-none focus-visible:ring-0'
 					/>
 				</div>
 
@@ -780,17 +788,28 @@ export function TaskModal() {
 							</PopoverContent>
 						</Popover>
 
-						{editingTask && (
-							<Button
-								type='button'
-								variant='ghost'
-								size='icon'
-								className='text-destructive hover:text-destructive'
-								onClick={handleDelete}
-							>
-								<Trash2 className='size-4' />
-							</Button>
-						)}
+						<div className='flex items-center gap-2'>
+							{isEditMode && (
+								<Button
+									type='button'
+									variant='ghost'
+									size='icon'
+									className='text-destructive hover:text-destructive'
+									onClick={handleDelete}
+								>
+									<Trash2 className='size-4' />
+								</Button>
+							)}
+							{isEditMode ? (
+								<Button type='button' size='sm' onClick={() => handleDialogOpenChange(false)}>
+									Сохранить
+								</Button>
+							) : (
+								<Button type='button' size='sm' onClick={handleCreate}>
+									Создать
+								</Button>
+							)}
+						</div>
 					</div>
 				</div>
 			</DialogContent>

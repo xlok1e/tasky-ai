@@ -564,31 +564,65 @@ public class TelegramBotService(
     private async Task SendStatisticsMessage(ITelegramBotClient bot, long chatId, Tasky.Domain.Entities.User user, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
-        var taskService = scope.ServiceProvider.GetRequiredService<ITaskService>();
+        var analyticsService = scope.ServiceProvider.GetRequiredService<IAnalyticsService>();
 
-        var tasks = await taskService.GetAllAsync(user.Id, null, false, null, null, null, null, null);
+        var localNow = DateTime.UtcNow.AddHours(3);
+        var startDateUtc = DateTime.SpecifyKind(localNow.Date.AddDays(-6).AddHours(-3), DateTimeKind.Utc);
+        var endDateUtc = DateTime.SpecifyKind(localNow.Date.AddHours(23).AddMinutes(59).AddSeconds(59).AddHours(-3), DateTimeKind.Utc);
 
-        if (!tasks.Any())
+        var request = new Tasky.Application.DTOs.Requests.TaskAnalyticsRequest
         {
-            await bot.SendMessage(chatId, "📊 У вас пока нет задач.", replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+            StartDate = startDateUtc,
+            EndDate = endDateUtc
+        };
+
+        var analytics = await analyticsService.GetAnalyticsAsync(user.Id, request);
+
+        if (analytics.TotalTasks == 0 && analytics.CompletedTasks == 0)
+        {
+            await bot.SendMessage(chatId, "📊 За последнюю неделю задач не найдено.", replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
             return;
         }
 
-        var tasksList = tasks.ToList();
-        var total = tasksList.Count;
-        var completed = tasksList.Count(t => t.Status == TaskCompletionStatus.Completed);
-        var active = total - completed;
-        var overdue = tasksList.Count(t => t.Status != TaskCompletionStatus.Completed &&
-            (t.Deadline ?? t.EndAt ?? t.StartAt) < DateTime.UtcNow);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("📊 Статистика за неделю:");
+        sb.AppendLine();
+        sb.AppendLine($"📋 Всего задач: {analytics.TotalTasks}");
+        sb.AppendLine($"✅ Выполнено: {analytics.CompletedTasks}");
 
-        var statsText =
-            $"📊 Ваша статистика:\n\n" +
-            $"📋 Всего задач: {total}\n" +
-            $"✅ Выполнено: {completed}\n" +
-            $"🔄 Активных: {active}\n" +
-            $"⚠️ Просрочено: {overdue}";
+        if (analytics.TotalTasks > 0 && analytics.CompletedTasks > 0)
+        {
+            var rate = (int)Math.Round((double)analytics.CompletedTasks / analytics.TotalTasks * 100);
+            sb.AppendLine($"📈 Процент выполнения: {rate}%");
+        }
 
-        await bot.SendMessage(chatId, statsText, replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+        if (analytics.TotalHoursSpent > 0)
+        {
+            sb.AppendLine($"⏱ Затрачено: {FormatHours(analytics.TotalHoursSpent)}");
+            sb.AppendLine($"⏳ Среднее на задачу: {FormatHours(analytics.AveragePerTask)}");
+        }
+
+        if (analytics.MostProductivePeriod != "Нет данных")
+            sb.AppendLine($"🏆 Продуктивный период: {analytics.MostProductivePeriod}");
+
+        if (analytics.PieChartData.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("📂 По спискам:");
+            foreach (var pie in analytics.PieChartData.OrderByDescending(p => p.TaskCount).Take(5))
+                sb.AppendLine($"  • {pie.ListName}: {pie.TaskCount} (выполнено: {pie.CompletedCount})");
+        }
+
+        await bot.SendMessage(chatId, sb.ToString().Trim(), replyMarkup: CreateMainKeyboard(), cancellationToken: ct);
+    }
+
+    private static string FormatHours(double hours)
+    {
+        if (hours < 1)
+            return $"{(int)Math.Round(hours * 60)} мин.";
+        var h = (int)hours;
+        var m = (int)Math.Round((hours - h) * 60);
+        return m > 0 ? $"{h} ч. {m} мин." : $"{h} ч.";
     }
 
     private static ReplyKeyboardMarkup CreateMainKeyboard() =>

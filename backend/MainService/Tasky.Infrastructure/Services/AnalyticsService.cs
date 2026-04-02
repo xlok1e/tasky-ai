@@ -23,18 +23,21 @@ namespace Tasky.Infrastructure.Services
             var ruCulture = CultureInfo.GetCultureInfo("ru-RU");
             var periodDays = (endDate - startDate).TotalDays;
 
-            // totalTasks = created in period; completedTasks = completed in period (intentionally different)
-            var totalTasks = await _db.Tasks
-                .CountAsync(t => t.UserId == userId && t.CreatedAt >= startDate && t.CreatedAt <= endDate);
-
-            // Load all completed tasks with their lists in a single query
-            var completedTasksRaw = await _db.Tasks
+            var allTasksInPeriod = await _db.Tasks
                 .Include(t => t.List)
-                .Where(t => t.UserId == userId && t.CompletedAt.HasValue
-                            && t.CompletedAt >= startDate && t.CompletedAt <= endDate)
+                .Where(t => t.UserId == userId
+                    && t.StartAt != null
+                    && t.StartAt >= startDate && t.StartAt <= endDate)
                 .ToListAsync();
 
-            // Load all execution history finished in the period in a single query
+            var totalTasks = allTasksInPeriod.Count;
+
+   
+            var completedTasksRaw = allTasksInPeriod
+                .Where(t => t.CompletedAt.HasValue)
+                .ToList();
+
+           
             var executionHistoryRaw = await _db.ExecutionHistory
                 .Include(eh => eh.Task)
                 .Where(eh => eh.Task.UserId == userId && eh.FinishedAt.HasValue
@@ -49,11 +52,11 @@ namespace Tasky.Infrastructure.Services
             var histogramData = BuildHistogramData(
                 completedTasksRaw, executionHistoryRaw, startDate, endDate, periodDays, ruCulture);
 
-            var mostProductivePeriod = histogramData.Count > 0
-                ? histogramData.MaxBy(x => x.Completed)!.Date
+            var mostProductivePeriod = allTasksInPeriod.Count > 0
+                ? ComputeMostProductivePeriod(allTasksInPeriod, periodDays, ruCulture)
                 : "Нет данных";
 
-            var pieChartData = completedTasksRaw
+            var pieChartData = allTasksInPeriod
                 .GroupBy(t => new
                 {
                     Name = t.List?.Name ?? "Inbox",
@@ -63,6 +66,7 @@ namespace Tasky.Infrastructure.Services
                 {
                     ListName = g.Key.Name,
                     TaskCount = g.Count(),
+                    CompletedCount = g.Count(t => t.CompletedAt.HasValue),
                     Fill = g.Key.Color
                 })
                 .ToList();
@@ -97,6 +101,51 @@ namespace Tasky.Infrastructure.Services
                 return BuildByDayInRange(completedTasks, executionHistory, startDate, endDate, ruCulture, includeDayName: false);
 
             return BuildByMonthInRange(completedTasks, executionHistory, startDate, endDate, ruCulture);
+        }
+
+        private static string ComputeMostProductivePeriod(
+            List<Tasky.Domain.Entities.TaskItem> tasks,
+            double periodDays,
+            CultureInfo ruCulture)
+        {
+            if (periodDays <= 1)
+            {
+                var bestHour = tasks
+                    .Where(t => t.StartAt.HasValue)
+                    .GroupBy(t => t.StartAt!.Value.Hour)
+                    .MaxBy(g => g.Count())!.Key;
+                return $"{bestHour:D2}:00";
+            }
+
+            if (periodDays <= 7)
+            {
+                var bestDay = tasks
+                    .Where(t => t.StartAt.HasValue)
+                    .GroupBy(t => t.StartAt!.Value.Date)
+                    .MaxBy(g => g.Count())!.Key;
+                var dayName = ruCulture.DateTimeFormat.GetAbbreviatedDayName(bestDay.DayOfWeek);
+                return $"{dayName}, {bestDay.Day} {bestDay.ToString("MMMM", ruCulture)}";
+            }
+
+            if (periodDays <= 31)
+            {
+                var bestDay = tasks
+                    .Where(t => t.StartAt.HasValue)
+                    .GroupBy(t => t.StartAt!.Value.Date)
+                    .MaxBy(g => g.Count())!.Key;
+                return $"{bestDay.Day} {bestDay.ToString("MMMM yyyy", ruCulture)}";
+            }
+
+            // Yearly: group by month
+            var bestMonth = tasks
+                .Where(t => t.StartAt.HasValue)
+                .GroupBy(t => new DateTime(t.StartAt!.Value.Year, t.StartAt.Value.Month, 1))
+                .MaxBy(g => g.Count())!.Key;
+            var isSingleYear = tasks
+                .Where(t => t.StartAt.HasValue)
+                .Select(t => t.StartAt!.Value.Year)
+                .Distinct().Count() == 1;
+            return bestMonth.ToString(isSingleYear ? "MMMM" : "MMMM yyyy", ruCulture);
         }
 
         private static List<HistogramDataPoint> BuildByHour(

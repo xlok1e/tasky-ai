@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Tasky.Application.DTOs.Requests;
 using Tasky.Application.DTOs.Responses;
 using Tasky.Application.Interfaces;
 using Tasky.Application.Mappers;
@@ -17,6 +18,7 @@ namespace Tasky.Infrastructure.ExternalServices
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly AppDbContext _db;
         private readonly IGoogleCalendarService _googleCalendar;
+        private readonly IAnalyticsService _analyticsService;
         private readonly ILogger<GptunnelService> _logger;
 
         private const string ModelName = "gemini-2.5-flash";
@@ -27,11 +29,12 @@ namespace Tasky.Infrastructure.ExternalServices
 
         private const int QueryTasksMaxDisplay = 15;
 
-        public GptunnelService(IHttpClientFactory httpClientFactory, AppDbContext db, IGoogleCalendarService googleCalendar, ILogger<GptunnelService> logger)
+        public GptunnelService(IHttpClientFactory httpClientFactory, AppDbContext db, IGoogleCalendarService googleCalendar, IAnalyticsService analyticsService, ILogger<GptunnelService> logger)
         {
             _httpClientFactory = httpClientFactory;
             _db = db;
             _googleCalendar = googleCalendar;
+            _analyticsService = analyticsService;
             _logger = logger;
         }
 
@@ -80,6 +83,8 @@ namespace Tasky.Infrastructure.ExternalServices
                     chatResponse = await HandleCalendarIntentAsync(userId, chatResponse.Intent, chatResponse.Reply, isGoogleConnected);
                 else if (chatResponse.Intent == "query_tasks")
                     chatResponse = await ExecuteTaskQueryAsync(userId, chatResponse.PendingQuery ?? new PendingQueryDto(), chatResponse.Reply);
+                else if (chatResponse.Intent == "get_statistics")
+                    chatResponse = await ExecuteStatisticsAsync(userId, chatResponse.PendingQuery ?? new PendingQueryDto(), chatResponse.Reply);
 
                 await SaveMessagesAsync(userId, message, chatResponse.Reply);
                 return chatResponse;
@@ -136,7 +141,7 @@ namespace Tasky.Infrastructure.ExternalServices
             Full week reference: {{weekCalendar}}
 
             OUTPUT FORMAT (always this exact structure):
-            {"reply":"<Russian text>","intent":<null|"create_task"|"update_task"|"query_tasks"|"sync_google"|"disconnect_google">,"pendingTask":<object|null>,"pendingUpdate":<object|null>,"pendingQuery":<object|null>}
+            {"reply":"<Russian text>","intent":<null|"create_task"|"update_task"|"query_tasks"|"get_statistics"|"sync_google"|"disconnect_google">,"pendingTask":<object|null>,"pendingUpdate":<object|null>,"pendingQuery":<object|null>}
 
             pendingTask schema:  {"title":"","description":null,"startAt":null,"endAt":null,"isAllDay":false,"priority":"Low","listName":null}
             pendingUpdate schema: {"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null,"listName":null}
@@ -195,6 +200,19 @@ namespace Tasky.Infrastructure.ExternalServices
               tomorrow: "{{tomorrow:yyyy-MM-dd}}T00:00:00" .. "{{tomorrow:yyyy-MM-dd}}T23:59:59"
               week:     "{{today:yyyy-MM-dd}}T00:00:00" .. "{{weekEnd:yyyy-MM-dd}}T23:59:59"
             - listName: exact name from Lists or null. status: "Completed"|"InProgress"|null (null = all).
+
+            [intent = "get_statistics"] User asks for statistics, analytics, productivity report, or summary of completed work:
+            - pendingQuery MUST be a non-null object. NEVER set pendingQuery to null for this intent.
+            - reply = ONLY a short header, e.g. «Статистика за неделю:». Do NOT include statistics data — the system generates and appends it automatically.
+            - If user does NOT specify a period, default to the last 7 days:
+              dateFrom: "{{today.AddDays(-6):yyyy-MM-dd}}T00:00:00", dateTo: "{{today:yyyy-MM-dd}}T23:59:59"
+            - Supported periods (GMT+3, no timezone suffix):
+              today:    dateFrom="{{today:yyyy-MM-dd}}T00:00:00", dateTo="{{today:yyyy-MM-dd}}T23:59:59"
+              week:     dateFrom="{{today.AddDays(-6):yyyy-MM-dd}}T00:00:00", dateTo="{{today:yyyy-MM-dd}}T23:59:59"
+              month:    dateFrom="{{today.AddDays(-29):yyyy-MM-dd}}T00:00:00", dateTo="{{today:yyyy-MM-dd}}T23:59:59"
+              year:     dateFrom="{{today.AddDays(-364):yyyy-MM-dd}}T00:00:00", dateTo="{{today:yyyy-MM-dd}}T23:59:59"
+            - User may also specify exact dates, e.g. "с 1 марта по 15 марта" → set dateFrom/dateTo accordingly.
+            - Keywords triggering this intent: "статистика", "аналитика", "продуктивность", "сколько задач выполнил", "отчёт", "итоги", "сводка".
 
             [intent = "sync_google" / "disconnect_google"]: handle Google Calendar connection requests.
 
@@ -335,7 +353,9 @@ namespace Tasky.Infrastructure.ExternalServices
                 intent = "create_task";
             if (pendingUpdate != null && !string.Equals(intent, "update_task", StringComparison.OrdinalIgnoreCase))
                 intent = "update_task";
-            if (pendingQuery != null && !string.Equals(intent, "query_tasks", StringComparison.OrdinalIgnoreCase))
+            if (pendingQuery != null
+                && !string.Equals(intent, "query_tasks", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(intent, "get_statistics", StringComparison.OrdinalIgnoreCase))
                 intent = "query_tasks";
 
             // Fallback: intent says create/update but the corresponding object is missing
@@ -348,6 +368,11 @@ namespace Tasky.Infrastructure.ExternalServices
             {
                 reply += "\n\nНе удалось распознать изменения задачи. Попробуйте сформулировать запрос иначе.";
                 intent = null;
+            }
+            if (string.Equals(intent, "get_statistics", StringComparison.OrdinalIgnoreCase) && pendingQuery == null)
+            {
+             new PendingQueryDto();
+                intent = "get_statistics";
             }
 
             return new AiChatResponse
@@ -524,6 +549,83 @@ namespace Tasky.Infrastructure.ExternalServices
                 Reply = sb.ToString().Trim(),
                 Intent = "query_tasks"
             };
+        }
+
+        private async Task<AiChatResponse> ExecuteStatisticsAsync(int userId, PendingQueryDto query, string aiHeader)
+        {
+            var localNow = DateTime.UtcNow.AddHours(3);
+
+            var dateFromLocal = query.DateFrom ?? localNow.Date.AddDays(-6);
+            var dateToLocal = query.DateTo ?? localNow.Date.AddHours(23).AddMinutes(59).AddSeconds(59);
+
+            if (dateToLocal.Hour == 0 && dateToLocal.Minute == 0 && dateToLocal.Second == 0)
+                dateToLocal = dateToLocal.AddHours(23).AddMinutes(59).AddSeconds(59);
+
+            var startDateUtc = DateTime.SpecifyKind(dateFromLocal.AddHours(-3), DateTimeKind.Utc);
+            var endDateUtc = DateTime.SpecifyKind(dateToLocal.AddHours(-3), DateTimeKind.Utc);
+
+            var request = new TaskAnalyticsRequest
+            {
+                StartDate = startDateUtc,
+                EndDate = endDateUtc
+            };
+
+            var analytics = await _analyticsService.GetAnalyticsAsync(userId, request);
+
+            if (analytics.TotalTasks == 0)
+            {
+                return new AiChatResponse
+                {
+                    Reply = $"{aiHeader}\n\nЗа этот период задач не найдено.",
+                    Intent = "get_statistics"
+                };
+            }
+
+            var periodDays = (endDateUtc - startDateUtc).TotalDays;
+
+            var reply = new StringBuilder();
+            reply.AppendLine(aiHeader);
+            reply.AppendLine();
+            reply.AppendLine($"📋 Всего задач: {analytics.TotalTasks}");
+            reply.AppendLine($"✅ Выполнено: {analytics.CompletedTasks}");
+
+            if (analytics.TotalTasks > 0 && analytics.CompletedTasks > 0)
+            {
+                var completionRate = (int)Math.Round((double)analytics.CompletedTasks / analytics.TotalTasks * 100);
+                reply.AppendLine($"📈 Процент выполнения: {completionRate}%");
+            }
+
+            if (analytics.TotalHoursSpent > 0)
+            {
+                reply.AppendLine($"⏱ Затрачено времени: {FormatHours(analytics.TotalHoursSpent)}");
+                reply.AppendLine($"⏳ Среднее на задачу: {FormatHours(analytics.AveragePerTask)}");
+            }
+
+            if (analytics.MostProductivePeriod != "Нет данных")
+                reply.AppendLine($"🏆 Самый продуктивный период: {analytics.MostProductivePeriod}");
+
+            if (analytics.PieChartData.Count > 0)
+            {
+                reply.AppendLine();
+                reply.AppendLine("📂 По спискам:");
+                foreach (var pie in analytics.PieChartData.OrderByDescending(p => p.TaskCount).Take(5))
+                    reply.AppendLine($"  • {pie.ListName}: {pie.TaskCount} (выполнено: {pie.CompletedCount})");
+            }
+
+            return new AiChatResponse
+            {
+                Reply = reply.ToString().Trim(),
+                Intent = "get_statistics"
+            };
+        }
+
+        private static string FormatHours(double hours)
+        {
+            if (hours < 1)
+                return $"{(int)Math.Round(hours * 60)} мин.";
+            var h = (int)hours;
+            var m = (int)Math.Round((hours - h) * 60);
+            return m > 0 ? $"{h} ч. {m} мин." : $"{h} ч.";
         }
 
         public async Task<int> ConfirmTaskAsync(int userId, PendingTaskDto pending)

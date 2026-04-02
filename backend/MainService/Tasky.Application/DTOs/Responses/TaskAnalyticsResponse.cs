@@ -4,7 +4,6 @@ namespace Tasky.Application.DTOs.Responses
 {
     public class TaskAnalyticsResponse
     {
-        /// <summary>Количество задач, созданных за период.</summary>
         public int TotalTasks { get; set; }
 
         /// <summary>Количество задач, завершённых за период.</summary>
@@ -58,6 +57,9 @@ namespace Tasky.Application.DTOs.Responses
 
         [JsonPropertyName("taskCount")]
         public int TaskCount { get; set; }
+
+        [JsonPropertyName("completedCount")]
+        public int CompletedCount { get; set; }
 
         /// <summary>Hex-цвет списка, используется как fill в круговой диаграмме.</summary>
         [JsonPropertyName("fill")]

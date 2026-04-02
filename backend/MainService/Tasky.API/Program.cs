@@ -9,6 +9,7 @@ using System.Net.Http.Headers;
 
 
 var builder = WebApplication.CreateBuilder(args);
+const string CorsPolicyName = "AllowFrontendClients";
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -54,22 +55,14 @@ builder.Services.AddScoped<Tasky.Application.Interfaces.IGoogleCalendarService, 
 // Configure CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        policy =>
-        {
-            policy
-            .WithOrigins(
-                "http://localhost:3000",
-                "http://taskyai.ru",
-                "https://taskyai.ru",
-                "http://www.taskyai.ru",
-                "https://www.taskyai.ru"
-            )
+    options.AddPolicy(CorsPolicyName, policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin => IsAllowedCorsOrigin(origin, builder.Configuration))
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
-    
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -132,7 +125,7 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = string.Empty; // Swagger будет доступен на корневом URL
 });
 
-app.UseCors("AllowAll");
+app.UseCors(CorsPolicyName);
 
 // Remove HTTPS redirection for development
 // app.UseHttpsRedirection();
@@ -150,4 +143,53 @@ static async Task ApplyDatabaseMigrationsAsync(WebApplication app)
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
     await dbContext.Database.MigrateAsync();
+}
+
+static bool IsAllowedCorsOrigin(string origin, IConfiguration configuration)
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+    {
+        return false;
+    }
+
+    var configuredOrigins = ParseConfiguredCorsOrigins(configuration["Cors:AllowedOrigins"]);
+    if (configuredOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return IsLocalDevelopmentOrigin(originUri);
+}
+
+static HashSet<string> ParseConfiguredCorsOrigins(string? rawOrigins)
+{
+    var defaultOrigins = new[]
+    {
+        "http://taskyai.ru",
+        "https://taskyai.ru",
+        "http://www.taskyai.ru",
+        "https://www.taskyai.ru"
+    };
+
+    if (string.IsNullOrWhiteSpace(rawOrigins))
+    {
+        return new HashSet<string>(defaultOrigins, StringComparer.OrdinalIgnoreCase);
+    }
+
+    var parsedOrigins = rawOrigins
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(origin => Uri.TryCreate(origin, UriKind.Absolute, out _));
+
+    return new HashSet<string>(parsedOrigins, StringComparer.OrdinalIgnoreCase);
+}
+
+static bool IsLocalDevelopmentOrigin(Uri originUri)
+{
+    if (originUri.Scheme is not ("http" or "https"))
+    {
+        return false;
+    }
+
+    return originUri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+           originUri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase);
 }

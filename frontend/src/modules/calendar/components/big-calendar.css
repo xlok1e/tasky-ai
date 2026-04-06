@@ -398,10 +398,10 @@ button.rbc-input::-moz-focus-inner {
 	text-transform: lowercase;
 }
 .rbc-agenda-time-cell .rbc-continues-after:after {
-	content: " »";
+	content: ' »';
 }
 .rbc-agenda-time-cell .rbc-continues-prior:before {
-	content: "« ";
+	content: '« ';
 }
 .rbc-agenda-date-cell,
 .rbc-agenda-time-cell {

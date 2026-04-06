@@ -703,7 +703,7 @@ export function TaskModal() {
 						placeholder='Название задачи'
 						value={title}
 						onChange={event => setTitle(event.target.value)}
-								className='h-auto border-0 bg-transparent! p-0 text-[18px]! leading-[1.05] font-bold shadow-none focus-visible:ring-0'
+						className='h-auto border-0 bg-transparent! p-0 text-[18px]! leading-[1.05] font-bold shadow-none focus-visible:ring-0'
 						autoFocus
 					/>
 					<Textarea
@@ -711,7 +711,7 @@ export function TaskModal() {
 						placeholder='Описание задачи'
 						value={description}
 						onChange={event => setDescription(event.target.value)}
-							className='min-h-[80px] resize-none border-0 bg-transparent! p-0 text-[18px]! shadow-none focus-visible:ring-0'
+						className='min-h-[80px] resize-none border-0 bg-transparent! p-0 text-[18px]! shadow-none focus-visible:ring-0'
 					/>
 				</div>
 
@@ -801,7 +801,11 @@ export function TaskModal() {
 								</Button>
 							)}
 							{isEditMode ? (
-								<Button type='button' size='sm' onClick={() => handleDialogOpenChange(false)}>
+								<Button
+									type='button'
+									size='sm'
+									onClick={() => handleDialogOpenChange(false)}
+								>
 									Сохранить
 								</Button>
 							) : (

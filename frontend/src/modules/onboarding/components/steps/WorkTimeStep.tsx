@@ -10,7 +10,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@shared/ui/select'
-import { ONBOARDING_TIMEZONES } from '../../constants/onboarding.constants'
+import { TIMEZONE_OPTIONS } from '../../constants/onboarding.constants'
 import { OnboardingShell } from '../OnboardingShell'
 
 interface WorkTimeStepProps {
@@ -100,9 +100,9 @@ export function WorkTimeStep({
 							<SelectValue placeholder='Выберите часовой пояс' />
 						</SelectTrigger>
 						<SelectContent>
-							{ONBOARDING_TIMEZONES.map(timezoneOption => (
-								<SelectItem key={timezoneOption} value={timezoneOption}>
-									{timezoneOption}
+						{TIMEZONE_OPTIONS.map(option => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
 								</SelectItem>
 							))}
 						</SelectContent>

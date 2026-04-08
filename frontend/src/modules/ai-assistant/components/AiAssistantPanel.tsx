@@ -1,34 +1,45 @@
-"use client";
+'use client'
 
-import { useEffect, useRef } from "react";
-import { useAiAssistant } from "../hooks/useAiAssistant";
-import { ChatInput } from "./ChatInput";
-import { AiAssistantHeader } from "./AiAssistantHeader";
-import { AiAssistantMessages } from "./AiAssistantMessages";
+import { useEffect, useRef } from 'react'
+import { useAiAssistant } from '../hooks/useAiAssistant'
+import { ChatInput } from './ChatInput'
+import { AiAssistantHeader } from './AiAssistantHeader'
+import { AiAssistantMessages } from './AiAssistantMessages'
 
 export function AiAssistantPanel() {
-	const { messages, isLoading, sendMessage, confirmTask, rejectTask, confirmUpdate, rejectUpdate } =
-		useAiAssistant();
-	const bottomRef = useRef<HTMLDivElement>(null);
+	const {
+		messages,
+		isLoading,
+		sendMessage,
+		confirmTask,
+		rejectTask,
+		confirmTasks,
+		rejectTasks,
+		confirmUpdate,
+		rejectUpdate,
+	} = useAiAssistant()
+	const bottomRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
-		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages, isLoading]);
+		bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+	}, [messages, isLoading])
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden bg-background justify-between">
+		<div className='flex h-full flex-col overflow-hidden bg-background justify-between'>
 			<AiAssistantHeader />
 			<AiAssistantMessages
 				isLoading={isLoading}
 				bottomRef={bottomRef}
 				onConfirmTask={confirmTask}
 				onRejectTask={rejectTask}
+				onConfirmTasks={confirmTasks}
+				onRejectTasks={rejectTasks}
 				onConfirmUpdate={confirmUpdate}
 				onRejectUpdate={rejectUpdate}
 			/>
-			<div className="px-[18px] pb-6">
+			<div className='px-[18px] pb-6'>
 				<ChatInput onSend={sendMessage} isLoading={isLoading} />
 			</div>
 		</div>
-	);
+	)
 }

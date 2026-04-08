@@ -3,6 +3,7 @@ import { toastMessage } from '@/shared/toast/toast'
 import {
 	sendMessage as apiSendMessage,
 	confirmTask as apiConfirmTask,
+	confirmTasksBatch as apiConfirmTasksBatch,
 	confirmUpdate as apiConfirmUpdate,
 } from '../api/ai-assistant.api'
 import { ChatRole } from '../types/ai-assistant.types'
@@ -22,6 +23,8 @@ interface AiAssistantState {
 	sendMessage: (text: string) => Promise<void>
 	confirmTask: (messageId: string, task: PendingTask) => Promise<void>
 	rejectTask: (messageId: string) => void
+	confirmTasks: (messageId: string, tasks: PendingTask[]) => Promise<void>
+	rejectTasks: (messageId: string) => void
 	confirmUpdate: (messageId: string, update: PendingUpdate) => Promise<void>
 	rejectUpdate: (messageId: string) => void
 
@@ -59,6 +62,7 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 function buildAssistantReply(
 	reply: string,
 	pendingTask?: PendingTask | null,
+	pendingTasks?: PendingTask[] | null,
 	pendingUpdate?: PendingUpdate | null,
 ): ChatMessage {
 	let content = reply
@@ -72,6 +76,7 @@ function buildAssistantReply(
 		role: ChatRole.Assistant,
 		content,
 		pendingTask: pendingTask ?? null,
+		pendingTasks: pendingTasks ?? null,
 		pendingUpdate: pendingUpdate ?? null,
 	}
 }
@@ -126,7 +131,8 @@ export const useAiAssistantStore = create<AiAssistantState>(set => ({
 		set(state => ({
 			messages: [
 				...state.messages.map(m =>
-					(m.pendingTask || m.pendingUpdate) && !m.pendingActionStatus
+					(m.pendingTask || m.pendingTasks || m.pendingUpdate) &&
+					!m.pendingActionStatus
 						? {
 								...m,
 								isConfirming: false,
@@ -144,6 +150,7 @@ export const useAiAssistantStore = create<AiAssistantState>(set => ({
 			const assistantMessage = buildAssistantReply(
 				response.reply,
 				response.pendingTask,
+				response.pendingTasks,
 				response.pendingUpdate,
 			)
 			set(state => ({
@@ -190,6 +197,42 @@ export const useAiAssistantStore = create<AiAssistantState>(set => ({
 	},
 
 	rejectTask: (messageId: string) => {
+		set(state => ({
+			messages: markConfirmDone(state.messages, messageId, 'rejected'),
+		}))
+	},
+
+	confirmTasks: async (messageId: string, tasks: PendingTask[]) => {
+		const tasksStore = useTasksStore.getState()
+		const tempIds = tasks.map((_, i) => -(Date.now() + i))
+		const optimisticTasks = tasks.map((t, i) =>
+			pendingTaskToOptimisticTask(t, tempIds[i]),
+		)
+
+		set(state => ({ messages: markAsConfirming(state.messages, messageId) }))
+		optimisticTasks.forEach(t => tasksStore._addOptimisticTask(t))
+
+		try {
+			await apiConfirmTasksBatch(tasks)
+			await tasksStore.fetchTasks()
+
+			const googleStore = useGoogleStore.getState()
+			if (googleStore.isConnected) {
+				googleStore.syncSilent()
+			}
+
+			set(state => ({
+				messages: markConfirmDone(state.messages, messageId, 'confirmed'),
+			}))
+			toastMessage.showSuccess(`Создано задач: ${tasks.length}`)
+		} catch {
+			tempIds.forEach(id => tasksStore._removeOptimisticTask(id))
+			set(state => ({ messages: markConfirmFailed(state.messages, messageId) }))
+			toastMessage.showError('Не удалось создать задачи. Попробуйте ещё раз.')
+		}
+	},
+
+	rejectTasks: (messageId: string) => {
 		set(state => ({
 			messages: markConfirmDone(state.messages, messageId, 'rejected'),
 		}))

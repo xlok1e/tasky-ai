@@ -49,6 +49,24 @@ namespace Tasky.API.Controllers
 			return Ok(new TaskConfirmResponse { TaskId = taskId, Title = request.Task.Title });
 		}
 
+		[HttpPost("confirm-tasks")]
+		public async Task<ActionResult<TasksBatchConfirmResponse>> ConfirmTasks([FromBody] AiConfirmTasksRequest request)
+		{
+			if (request.Tasks is not { Count: > 0 })
+				return BadRequest("At least one task is required");
+
+			var userId = GetUserId();
+			if (userId is null) return Unauthorized();
+
+			var createdIds = await _aiService.ConfirmTasksAsync(userId.Value, request.Tasks);
+
+			var tasks = createdIds
+				.Zip(request.Tasks, (id, pending) => new TaskConfirmResponse { TaskId = id, Title = pending.Title })
+				.ToList();
+
+			return Ok(new TasksBatchConfirmResponse { Tasks = tasks });
+		}
+
 		[HttpPost("confirm-update")]
 		public async Task<ActionResult<TaskResponse>> ConfirmUpdate([FromBody] AiConfirmUpdateRequest request)
 		{

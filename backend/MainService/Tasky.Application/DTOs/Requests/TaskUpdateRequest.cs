@@ -10,5 +10,6 @@ public record TaskUpdateRequest(
     bool IsAllDay,
     TaskPriority Priority,
     TaskCompletionStatus Status,
-    int? ListId
+    int? ListId,
+    DateTime? NotifyAt
 );

@@ -22,7 +22,8 @@ namespace Tasky.Application.Mappers
                 item.Status,
                 item.CreatedAt,
                 item.CompletedAt,
-                item.GoogleEventId
+                item.GoogleEventId,
+                item.NotifyAt
             );
 
         public static TaskSummaryResponse ToSummaryResponse(this TaskItem item)
@@ -39,7 +40,8 @@ namespace Tasky.Application.Mappers
                 item.Priority,
                 item.Status,
                 item.CreatedAt,
-                item.GoogleEventId
+                item.GoogleEventId,
+                item.NotifyAt
             );
 
         public static ListResponse ToResponse(this TaskList list)

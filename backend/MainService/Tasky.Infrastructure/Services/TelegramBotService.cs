@@ -383,6 +383,12 @@ public class TelegramBotService(
 
         await bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
 
+        if (data.StartsWith("task_done:") || data.StartsWith("task_snooze:"))
+        {
+            await HandleTaskNotificationCallbackAsync(bot, chatId, messageId, originalText, data, ct);
+            return;
+        }
+
         if (data == "cancel")
         {
             _pendingOperations.TryRemove(chatId, out _);
@@ -456,6 +462,67 @@ public class TelegramBotService(
             await bot.EditMessageText(chatId, messageId,
                 $"❌ Ошибка при выполнении операции\n\n{originalText}",
                 cancellationToken: ct);
+        }
+    }
+
+    private async Task HandleTaskNotificationCallbackAsync(
+        ITelegramBotClient bot, long chatId, int messageId,
+        string originalText, string data, CancellationToken ct)
+    {
+        var parts = data.Split(':');
+        if (parts.Length != 2 || !int.TryParse(parts[1], out var taskId))
+        {
+            await bot.EditMessageText(chatId, messageId, originalText, cancellationToken: ct);
+            return;
+        }
+
+        var action = parts[0];
+        var user = await FindUserByChatIdAsync(chatId, ct);
+        if (user is null) return;
+
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        if (action == "task_done")
+        {
+            var task = await db.Tasks
+                .FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == user.Id, ct);
+
+            if (task is not null)
+            {
+                task.Status = TaskCompletionStatus.Completed;
+                task.CompletedAt = DateTime.UtcNow;
+                task.NotifyAt = null;
+                await db.SaveChangesAsync(ct);
+            }
+
+            await bot.EditMessageText(chatId, messageId,
+                $"✅ Задача выполнена!\n\n{originalText}",
+                cancellationToken: ct);
+
+            logger.LogInformation("Task {TaskId} marked as completed via Telegram by user {UserId}", taskId, user.Id);
+        }
+        else if (action == "task_snooze")
+        {
+            // Remove the notification, task stays as is
+            var notification = await db.NotificationsQueue
+                .FirstOrDefaultAsync(n => n.TaskId == taskId && n.UserId == user.Id && n.IsSent, ct);
+
+            if (notification is not null)
+            {
+                var task = await db.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == user.Id, ct);
+                if (task is not null)
+                {
+                    task.NotifyAt = null;
+                }
+            }
+            await db.SaveChangesAsync(ct);
+
+            await bot.EditMessageText(chatId, messageId,
+                $"⏸ Уведомление отложено\n\n{originalText}",
+                cancellationToken: ct);
+
+            logger.LogInformation("Task {TaskId} notification snoozed by user {UserId}", taskId, user.Id);
         }
     }
 

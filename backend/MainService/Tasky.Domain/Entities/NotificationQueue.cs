@@ -14,4 +14,5 @@ public class NotificationQueue
     public DateTime? SentAt { get; set; }
 
     public User User { get; set; } = null!;
+    public TaskItem? Task { get; set; }
 }

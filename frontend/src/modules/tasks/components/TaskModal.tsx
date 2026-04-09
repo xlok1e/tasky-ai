@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
 	addDays,
-	endOfISOWeek,
 	format,
 	isToday,
+	isTomorrow,
 	isValid,
 	startOfISOWeek,
 } from 'date-fns'
@@ -14,6 +14,7 @@ import {
 	CalendarDays,
 	CalendarRange,
 	Flag,
+	Bell,
 	Inbox,
 	Sunrise,
 	Sun,
@@ -40,12 +41,8 @@ import { useTasksStore } from '../store/tasks.store'
 import { useListsStore } from '@modules/lists/store/lists.store'
 import { TaskPriority } from '../types/task.enums'
 
-type DateTabValue = 'start' | 'end'
-
-const DEFAULT_TIME_BY_TAB: Record<DateTabValue, string> = {
-	start: '09:00',
-	end: '18:00',
-}
+const DEFAULT_START_TIME = '09:00'
+const DEFAULT_END_TIME = '18:00'
 
 const LISTS_WITH_SCROLL_COUNT = 5
 
@@ -73,8 +70,39 @@ const PRIORITY_OPTIONS: PriorityOption[] = [
 	},
 ]
 
-function isDateTabValue(value: string): value is DateTabValue {
-	return value === 'start' || value === 'end'
+interface ReminderOption {
+	label: string
+	offsetMs: number
+}
+
+const REMINDER_OPTIONS: ReminderOption[] = [
+	{ label: 'За сутки', offsetMs: 24 * 60 * 60 * 1000 },
+	{ label: 'За 5 часов', offsetMs: 5 * 60 * 60 * 1000 },
+	{ label: 'За час', offsetMs: 60 * 60 * 1000 },
+	{ label: 'За 30 минут', offsetMs: 30 * 60 * 1000 },
+	{ label: 'За 15 минут', offsetMs: 15 * 60 * 1000 },
+	{ label: 'За 5 минут', offsetMs: 5 * 60 * 1000 },
+	{ label: 'Во время', offsetMs: 0 },
+]
+
+function findReminderLabel(offsetMs: number | null): string | null {
+	if (offsetMs === null) return null
+	const match = REMINDER_OPTIONS.find(
+		opt => Math.abs(opt.offsetMs - offsetMs) < 60 * 1000,
+	)
+	return match?.label ?? null
+}
+
+function detectReminderOffset(
+	notifyAt: Date | null,
+	taskDate: Date | null,
+): number | null {
+	if (!notifyAt || !taskDate) return null
+	const diffMs = taskDate.getTime() - notifyAt.getTime()
+	const match = REMINDER_OPTIONS.find(
+		opt => Math.abs(opt.offsetMs - diffMs) < 60 * 1000,
+	)
+	return match?.offsetMs ?? null
 }
 
 function parseTimeValue(
@@ -124,32 +152,32 @@ function toTimeInputValue(dateValue: Date | null): string {
 
 function formatDateLabel(dateValue: Date): string {
 	if (isToday(dateValue)) {
-		return `Сегодня, ${format(dateValue, 'd MMMM', { locale: ru })}`
+		return 'Сегодня'
+	}
+	if (isTomorrow(dateValue)) {
+		return 'Завтра'
 	}
 	return format(dateValue, 'd MMMM', { locale: ru })
 }
 
-function toDateRangeLabel(
+function toDateLabel(
 	startDate: Date | null,
 	endDate: Date | null,
+	isAllDay: boolean,
 ): string {
-	if (!startDate && !endDate) {
+	if (!startDate) {
 		return 'Без даты'
 	}
-
-	if (startDate && !endDate) {
-		return formatDateLabel(startDate)
+	const datePart = formatDateLabel(startDate)
+	if (isAllDay) {
+		return datePart
 	}
-
-	if (!startDate && endDate) {
-		return `До ${format(endDate, 'd MMMM', { locale: ru })}`
+	const startTime = format(startDate, 'H:mm')
+	if (endDate) {
+		const endTime = format(endDate, 'H:mm')
+		return `${datePart}, ${startTime} - ${endTime}`
 	}
-
-	if (startDate && endDate) {
-		return `${format(startDate, 'd MMM', { locale: ru })} - ${format(endDate, 'd MMM', { locale: ru })}`
-	}
-
-	return 'Без даты'
+	return `${datePart}, ${startTime}`
 }
 
 export function TaskModal() {
@@ -163,16 +191,19 @@ export function TaskModal() {
 	const [isCompleted, setIsCompleted] = useState(false)
 	const [startDate, setStartDate] = useState<Date | null>(null)
 	const [endDate, setEndDate] = useState<Date | null>(null)
+	const [isAllDay, setIsAllDay] = useState(false)
 	const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Low)
 	const [listId, setListId] = useState<number | null>(null)
 	const [isDatePopoverOpen, setIsDatePopoverOpen] = useState(false)
 	const [isPriorityPopoverOpen, setIsPriorityPopoverOpen] = useState(false)
+	const [isReminderPopoverOpen, setIsReminderPopoverOpen] = useState(false)
+	const [reminderOffsetMs, setReminderOffsetMs] = useState<number | null>(null)
 	const [isListPopoverOpen, setIsListPopoverOpen] = useState(false)
-	const [dateTab, setDateTab] = useState<DateTabValue>('start')
 	const [draftStartDate, setDraftStartDate] = useState<Date | null>(null)
 	const [draftEndDate, setDraftEndDate] = useState<Date | null>(null)
 	const [draftStartTime, setDraftStartTime] = useState('')
 	const [draftEndTime, setDraftEndTime] = useState('')
+	const [draftIsAllDay, setDraftIsAllDay] = useState(false)
 	const [draftMonth, setDraftMonth] = useState<Date>(new Date())
 
 	useEffect(() => {
@@ -189,13 +220,22 @@ export function TaskModal() {
 			setDraftEndDate(nextEndDate)
 			setDraftStartTime(toTimeInputValue(nextStartDate))
 			setDraftEndTime(toTimeInputValue(nextEndDate))
-			setDateTab('start')
+			const nextIsAllDay = editingTask?.isAllDay ?? false
+			setIsAllDay(nextIsAllDay)
+			setDraftIsAllDay(nextIsAllDay)
 			setDraftMonth(nextStartDate ?? new Date())
 
 			setPriority(editingTask?.priority ?? TaskPriority.Low)
+			setReminderOffsetMs(
+				detectReminderOffset(
+					editingTask?.notifyAt ?? null,
+					editingTask?.startDate ?? editingTask?.endDate ?? null,
+				),
+			)
 			setListId(editingTask?.listId ?? prefill?.listId ?? null)
 			setIsDatePopoverOpen(false)
 			setIsPriorityPopoverOpen(false)
+			setIsReminderPopoverOpen(false)
 			setIsListPopoverOpen(false)
 		}
 	}, [isOpen, editingTask, prefill])
@@ -213,6 +253,19 @@ export function TaskModal() {
 		}
 		return lists.find(list => list.id === listId) ?? null
 	}, [listId, lists])
+
+	const effectiveTaskDate = useMemo(() => {
+		return startDate ?? endDate
+	}, [startDate, endDate])
+
+	const notifyAt = useMemo(() => {
+		if (reminderOffsetMs === null || !effectiveTaskDate) return null
+		return new Date(effectiveTaskDate.getTime() - reminderOffsetMs)
+	}, [reminderOffsetMs, effectiveTaskDate])
+
+	const reminderLabel = useMemo(() => {
+		return findReminderLabel(reminderOffsetMs)
+	}, [reminderOffsetMs])
 
 	const buildTaskPayload = (): {
 		trimmed: string
@@ -272,8 +325,11 @@ export function TaskModal() {
 				payload.trimmed !== editingTask.title ||
 				payload.nextDescription !== (editingTask.description ?? null) ||
 				isCompleted !== editingTask.isCompleted ||
+				isAllDay !== (editingTask.isAllDay ?? false) ||
 				priority !== editingTask.priority ||
 				listId !== (editingTask.listId ?? null) ||
+				(notifyAt?.getTime() ?? null) !==
+					(editingTask.notifyAt?.getTime() ?? null) ||
 				(payload.nextStartDate?.getTime() ?? null) !==
 					(editingTask.startDate?.getTime() ?? null) ||
 				(payload.nextEndDate?.getTime() ?? null) !==
@@ -284,11 +340,12 @@ export function TaskModal() {
 					title: payload.trimmed,
 					description: payload.nextDescription,
 					isCompleted,
-					isAllDay: false,
+					isAllDay,
 					startDate: payload.nextStartDate,
 					endDate: payload.nextEndDate,
 					priority,
 					listId,
+					notifyAt,
 				})
 			}
 		} else {
@@ -308,9 +365,10 @@ export function TaskModal() {
 			description: payload.nextDescription,
 			startDate: payload.nextStartDate,
 			endDate: payload.nextEndDate,
-			isAllDay: false,
+			isAllDay,
 			listId,
 			priority,
+			notifyAt,
 		})
 	}
 
@@ -325,7 +383,7 @@ export function TaskModal() {
 		setDraftEndDate(endDate)
 		setDraftStartTime(toTimeInputValue(startDate))
 		setDraftEndTime(toTimeInputValue(endDate))
-		setDateTab('start')
+		setDraftIsAllDay(isAllDay)
 		setDraftMonth(startDate ?? new Date())
 	}
 
@@ -336,35 +394,49 @@ export function TaskModal() {
 		}
 	}
 
-	const handleDateSelect = (
-		tab: DateTabValue,
-		selectedDate: Date | undefined,
-	) => {
-		if (!selectedDate) {
-			if (tab === 'start') {
-				setDraftStartDate(null)
-			} else {
-				setDraftEndDate(null)
-			}
-			return
-		}
+	const handleCalendarSelect = (selectedDate: Date | undefined) => {
+		if (!selectedDate) return
 
-		const currentDate = tab === 'start' ? draftStartDate : draftEndDate
-		const selectedTabTime = tab === 'start' ? draftStartTime : draftEndTime
-		const currentTimeValue =
-			(isCompleteTimeValue(selectedTabTime) && selectedTabTime) ||
-			DEFAULT_TIME_BY_TAB[tab]
-		const nextDate = applyTimeToDate(selectedDate, currentTimeValue)
-		if (tab === 'start') {
-			setDraftStartDate(nextDate)
-			setDraftStartTime(currentTimeValue)
-			return
+		if (draftIsAllDay) {
+			setDraftStartDate(
+				new Date(
+					selectedDate.getFullYear(),
+					selectedDate.getMonth(),
+					selectedDate.getDate(),
+					0,
+					0,
+					0,
+					0,
+				),
+			)
+			setDraftEndDate(
+				new Date(
+					selectedDate.getFullYear(),
+					selectedDate.getMonth(),
+					selectedDate.getDate(),
+					23,
+					59,
+					59,
+					999,
+				),
+			)
+			setDraftStartTime('')
+			setDraftEndTime('')
+		} else {
+			const startTime = isCompleteTimeValue(draftStartTime)
+				? draftStartTime
+				: DEFAULT_START_TIME
+			const endTime = isCompleteTimeValue(draftEndTime)
+				? draftEndTime
+				: DEFAULT_END_TIME
+			setDraftStartDate(applyTimeToDate(selectedDate, startTime))
+			setDraftStartTime(startTime)
+			setDraftEndDate(applyTimeToDate(selectedDate, endTime))
+			setDraftEndTime(endTime)
 		}
-		setDraftEndDate(nextDate)
-		setDraftEndTime(currentTimeValue)
 	}
 
-	const handleDraftTimeChange = (tab: DateTabValue, timeValue: string) => {
+	const handleDraftTimeChange = (tab: 'start' | 'end', timeValue: string) => {
 		const normalizedTime = normalizeTimeInput(timeValue)
 		if (tab === 'start') {
 			setDraftStartTime(normalizedTime)
@@ -380,14 +452,10 @@ export function TaskModal() {
 		}
 
 		setDraftEndTime(normalizedTime)
-		if (!isCompleteTimeValue(normalizedTime)) {
+		if (!isCompleteTimeValue(normalizedTime) || !draftStartDate) {
 			return
 		}
-		setDraftEndDate(previousDate =>
-			previousDate
-				? applyTimeToDate(previousDate, normalizedTime)
-				: previousDate,
-		)
+		setDraftEndDate(applyTimeToDate(draftStartDate, normalizedTime))
 	}
 
 	const handleCancelDateSelection = () => {
@@ -401,12 +469,15 @@ export function TaskModal() {
 			draftEndDate &&
 			draftEndDate.getTime() < draftStartDate.getTime()
 		) {
-			toastMessage.showError('Дата окончания не может быть раньше даты начала')
+			toastMessage.showError(
+				'Время окончания не может быть раньше времени начала',
+			)
 			return
 		}
 
 		setStartDate(draftStartDate)
 		setEndDate(draftEndDate)
+		setIsAllDay(draftIsAllDay)
 		setIsDatePopoverOpen(false)
 	}
 
@@ -414,33 +485,50 @@ export function TaskModal() {
 		preset: 'today' | 'tomorrow' | 'thisWeek' | 'nextWeek',
 	) => {
 		const now = new Date()
-		let nextStart: Date
-		let nextEnd: Date | null = null
+		let target: Date
 
 		if (preset === 'today') {
-			nextStart = applyTimeToDate(now, DEFAULT_TIME_BY_TAB.start)
+			target = now
 		} else if (preset === 'tomorrow') {
-			nextStart = applyTimeToDate(addDays(now, 1), DEFAULT_TIME_BY_TAB.start)
+			target = addDays(now, 1)
 		} else if (preset === 'thisWeek') {
-			nextStart = applyTimeToDate(
-				startOfISOWeek(now),
-				DEFAULT_TIME_BY_TAB.start,
-			)
-			nextEnd = applyTimeToDate(endOfISOWeek(now), DEFAULT_TIME_BY_TAB.end)
+			target = startOfISOWeek(now)
 		} else {
-			const nextWeekStart = addDays(startOfISOWeek(now), 7)
-			nextStart = applyTimeToDate(nextWeekStart, DEFAULT_TIME_BY_TAB.start)
-			nextEnd = applyTimeToDate(
-				endOfISOWeek(nextWeekStart),
-				DEFAULT_TIME_BY_TAB.end,
-			)
+			target = addDays(startOfISOWeek(now), 7)
 		}
 
-		setDraftStartDate(nextStart)
-		setDraftEndDate(nextEnd)
-		setDraftStartTime(toTimeInputValue(nextStart))
-		setDraftEndTime(nextEnd ? toTimeInputValue(nextEnd) : '')
-		setDraftMonth(nextStart)
+		if (draftIsAllDay) {
+			setDraftStartDate(
+				new Date(
+					target.getFullYear(),
+					target.getMonth(),
+					target.getDate(),
+					0,
+					0,
+					0,
+					0,
+				),
+			)
+			setDraftEndDate(
+				new Date(
+					target.getFullYear(),
+					target.getMonth(),
+					target.getDate(),
+					23,
+					59,
+					59,
+					999,
+				),
+			)
+			setDraftStartTime('')
+			setDraftEndTime('')
+		} else {
+			setDraftStartDate(applyTimeToDate(target, DEFAULT_START_TIME))
+			setDraftEndDate(applyTimeToDate(target, DEFAULT_END_TIME))
+			setDraftStartTime(DEFAULT_START_TIME)
+			setDraftEndTime(DEFAULT_END_TIME)
+		}
+		setDraftMonth(target)
 	}
 
 	return (
@@ -475,7 +563,7 @@ export function TaskModal() {
 											strokeWidth={1.5}
 										/>
 										<span className='truncate text-[16px] text-primary'>
-											{toDateRangeLabel(startDate, endDate)}
+											{toDateLabel(startDate, endDate, isAllDay)}
 										</span>
 									</Button>
 								</PopoverTrigger>
@@ -484,39 +572,6 @@ export function TaskModal() {
 									collisionPadding={12}
 									className='w-[260px] p-0 overflow-hidden'
 								>
-									{/* Tabs */}
-									<div className='flex border-b border-border'>
-										{(
-											[
-												{ value: 'start', label: 'Начало' },
-												{ value: 'end', label: 'Окончание' },
-											] as const
-										).map(tab => (
-											<button
-												key={tab.value}
-												type='button'
-												onClick={() => {
-													setDateTab(tab.value)
-													setDraftMonth(
-														(tab.value === 'start'
-															? draftStartDate
-															: draftEndDate) ??
-															draftStartDate ??
-															new Date(),
-													)
-												}}
-												className={cn(
-													'flex-1 py-2.5 text-sm font-medium transition-colors',
-													dateTab === tab.value
-														? 'border-b-2 border-primary text-foreground'
-														: 'text-muted-foreground hover:text-foreground',
-												)}
-											>
-												{tab.label}
-											</button>
-										))}
-									</div>
-
 									{/* Icon shortcuts */}
 									<div className='flex items-center justify-center gap-4 border-b border-border px-4 py-3'>
 										{(
@@ -552,45 +607,33 @@ export function TaskModal() {
 									<div className='px-3 pt-2 pb-2'>
 										<Calendar
 											mode='single'
-											selected={
-												(dateTab === 'start' ? draftStartDate : draftEndDate) ??
-												undefined
-											}
-											onSelect={value => handleDateSelect(dateTab, value)}
+											selected={draftStartDate ?? undefined}
+											onSelect={handleCalendarSelect}
 											month={draftMonth}
 											onMonthChange={setDraftMonth}
 											className='p-0'
 										/>
 									</div>
 
-									{/* Date chip for active tab */}
+									{/* Date chip */}
 									<div className='flex items-center justify-between px-4 pt-1 pb-2'>
-										{(dateTab === 'start' ? draftStartDate : draftEndDate) ? (
+										{draftStartDate ? (
 											<span className='rounded-full bg-primary/10 px-3 py-0.5 text-sm font-medium text-primary'>
-												{format(
-													(dateTab === 'start'
-														? draftStartDate
-														: draftEndDate)!,
-													'd MMMM yyyy',
-													{ locale: ru },
-												)}
+												{format(draftStartDate, 'd MMMM yyyy', { locale: ru })}
 											</span>
 										) : (
 											<span className='text-sm text-muted-foreground/60'>
 												не выбрана
 											</span>
 										)}
-										{(dateTab === 'start' ? draftStartDate : draftEndDate) && (
+										{draftStartDate && (
 											<button
 												type='button'
 												onClick={() => {
-													if (dateTab === 'start') {
-														setDraftStartDate(null)
-														setDraftStartTime('')
-													} else {
-														setDraftEndDate(null)
-														setDraftEndTime('')
-													}
+													setDraftStartDate(null)
+													setDraftEndDate(null)
+													setDraftStartTime('')
+													setDraftEndTime('')
 												}}
 												className='rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground'
 												aria-label='Очистить дату'
@@ -600,33 +643,113 @@ export function TaskModal() {
 										)}
 									</div>
 
-									{/* Time input */}
-									{(dateTab === 'start' ? draftStartDate : draftEndDate) && (
-										<div className='border-t border-border px-4 py-3'>
+									{/* All Day toggle + Time inputs */}
+									{draftStartDate && (
+										<div className='border-t border-border px-4 py-3 space-y-3'>
 											<div className='flex items-center gap-2'>
-												<Label
-													htmlFor={`task-modal-time-${dateTab}`}
-													className='shrink-0 text-sm text-muted-foreground'
-												>
-													{dateTab === 'start'
-														? 'Время начала'
-														: 'Время окончания'}
-												</Label>
-												<Input
-													id={`task-modal-time-${dateTab}`}
-													type='text'
-													inputMode='numeric'
-													placeholder='HH:mm'
-													maxLength={5}
-													value={
-														dateTab === 'start' ? draftStartTime : draftEndTime
-													}
-													onChange={event =>
-														handleDraftTimeChange(dateTab, event.target.value)
-													}
-													className='h-8 flex-1 text-sm'
+												<Checkbox
+													id='task-modal-all-day'
+													checked={draftIsAllDay}
+													onCheckedChange={value => {
+														const checked = Boolean(value)
+														setDraftIsAllDay(checked)
+														if (checked) {
+															if (draftStartDate) {
+																setDraftStartDate(
+																	new Date(
+																		draftStartDate.getFullYear(),
+																		draftStartDate.getMonth(),
+																		draftStartDate.getDate(),
+																		0,
+																		0,
+																		0,
+																		0,
+																	),
+																)
+															}
+															setDraftEndDate(
+																new Date(
+																	draftStartDate.getFullYear(),
+																	draftStartDate.getMonth(),
+																	draftStartDate.getDate(),
+																	23,
+																	59,
+																	59,
+																	999,
+																),
+															)
+															setDraftStartTime('')
+															setDraftEndTime('')
+														} else {
+															const st = DEFAULT_START_TIME
+															const et = DEFAULT_END_TIME
+															setDraftStartDate(
+																applyTimeToDate(draftStartDate, st),
+															)
+															setDraftStartTime(st)
+															setDraftEndDate(
+																applyTimeToDate(draftStartDate, et),
+															)
+															setDraftEndTime(et)
+														}
+													}}
+													className='size-4 rounded-[3px] border border-border'
 												/>
+												<Label
+													htmlFor='task-modal-all-day'
+													className='text-sm cursor-pointer select-none'
+												>
+													Весь день
+												</Label>
 											</div>
+
+											{!draftIsAllDay && (
+												<div className='flex items-center gap-2'>
+													<div className='flex flex-1 items-center gap-1.5'>
+														<Label
+															htmlFor='task-modal-time-start'
+															className='shrink-0 text-xs text-muted-foreground'
+														>
+															С
+														</Label>
+														<Input
+															id='task-modal-time-start'
+															type='text'
+															inputMode='numeric'
+															placeholder='HH:mm'
+															maxLength={5}
+															value={draftStartTime}
+															onChange={event =>
+																handleDraftTimeChange(
+																	'start',
+																	event.target.value,
+																)
+															}
+															className='h-7 flex-1 text-sm'
+														/>
+													</div>
+													<div className='flex flex-1 items-center gap-1.5'>
+														<Label
+															htmlFor='task-modal-time-end'
+															className='shrink-0 text-xs text-muted-foreground'
+														>
+															До
+														</Label>
+														<Input
+															id='task-modal-time-end'
+															type='text'
+															inputMode='numeric'
+															placeholder='HH:mm'
+															maxLength={5}
+															value={draftEndTime}
+															onChange={event =>
+																handleDraftTimeChange('end', event.target.value)
+															}
+															className='h-7 flex-1 text-sm'
+														/>
+													</div>
+												</div>
+											)}
 										</div>
 									)}
 
@@ -654,50 +777,125 @@ export function TaskModal() {
 							</Popover>
 						</div>
 
-						<Popover
-							open={isPriorityPopoverOpen}
-							onOpenChange={setIsPriorityPopoverOpen}
-						>
-							<PopoverTrigger asChild>
-								<Button
-									type='button'
-									variant='ghost'
-									size='icon'
-									className={cn(
-										'size-9 ',
-										selectedPriorityOption.colorClassName,
-									)}
-								>
-									<Flag className='size-4' />
-								</Button>
-							</PopoverTrigger>
-							<PopoverContent align='end' className='w-[200px] p-1'>
-								<div className='flex flex-col gap-1'>
-									{PRIORITY_OPTIONS.map(option => (
-										<Button
-											key={option.value}
-											type='button'
-											variant='ghost'
-											className={cn(
-												'w-full justify-start gap-2 h-[32px]! text-[16px]',
-												priority === option.value && 'bg-accent',
-											)}
-											onClick={() => {
-												setPriority(option.value)
-												setIsPriorityPopoverOpen(false)
-											}}
-										>
-											<Flag className={cn('size-4', option.colorClassName)} />
-											{option.label}
-										</Button>
-									))}
-								</div>
-							</PopoverContent>
-						</Popover>
+						<div className='flex items-center'>
+							<Popover
+								open={isReminderPopoverOpen}
+								onOpenChange={setIsReminderPopoverOpen}
+							>
+								<PopoverTrigger asChild>
+									<Button
+										type='button'
+										variant='ghost'
+										size='icon'
+										className={cn(
+											'size-9',
+											reminderOffsetMs !== null
+												? 'text-primary'
+												: 'text-muted-foreground',
+										)}
+										disabled={!effectiveTaskDate}
+										title={
+											effectiveTaskDate
+												? 'Напоминание'
+												: 'Сначала укажите дату задачи'
+										}
+									>
+										<Bell className='size-4' />
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent align='end' className='w-[200px] p-1'>
+									<div className='flex flex-col gap-1'>
+										{REMINDER_OPTIONS.map(option => {
+											const isSelected =
+												reminderOffsetMs !== null &&
+												Math.abs(reminderOffsetMs - option.offsetMs) < 60 * 1000
+											return (
+												<Button
+													key={option.label}
+													type='button'
+													variant='ghost'
+													className={cn(
+														'w-full justify-start gap-2 h-[32px]! text-[16px]',
+														isSelected && 'bg-accent',
+													)}
+													onClick={() => {
+														setReminderOffsetMs(option.offsetMs)
+														setIsReminderPopoverOpen(false)
+													}}
+												>
+													{option.label}
+												</Button>
+											)
+										})}
+										{reminderOffsetMs !== null && (
+											<Button
+												type='button'
+												variant='ghost'
+												className='w-full justify-start gap-2 h-[32px]! text-[16px] text-destructive'
+												onClick={() => {
+													setReminderOffsetMs(null)
+													setIsReminderPopoverOpen(false)
+												}}
+											>
+												<X className='size-4' />
+												Убрать
+											</Button>
+										)}
+									</div>
+								</PopoverContent>
+							</Popover>
+
+							<Popover
+								open={isPriorityPopoverOpen}
+								onOpenChange={setIsPriorityPopoverOpen}
+							>
+								<PopoverTrigger asChild>
+									<Button
+										type='button'
+										variant='ghost'
+										size='icon'
+										className={cn(
+											'size-9 ',
+											selectedPriorityOption.colorClassName,
+										)}
+									>
+										<Flag className='size-4' />
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent align='end' className='w-[200px] p-1'>
+									<div className='flex flex-col gap-1'>
+										{PRIORITY_OPTIONS.map(option => (
+											<Button
+												key={option.value}
+												type='button'
+												variant='ghost'
+												className={cn(
+													'w-full justify-start gap-2 h-[32px]! text-[16px]',
+													priority === option.value && 'bg-accent',
+												)}
+												onClick={() => {
+													setPriority(option.value)
+													setIsPriorityPopoverOpen(false)
+												}}
+											>
+												<Flag className={cn('size-4', option.colorClassName)} />
+												{option.label}
+											</Button>
+										))}
+									</div>
+								</PopoverContent>
+							</Popover>
+						</div>
 					</div>
 				</DialogHeader>
 
 				<div className='space-y-2 px-6 py-5'>
+					{reminderLabel && (
+						<div className='flex items-center gap-1.5 text-sm text-primary'>
+							<Bell className='size-3.5' />
+							<span>Уведомление: {reminderLabel.toLowerCase()}</span>
+						</div>
+					)}
 					<Input
 						id='modal-title'
 						placeholder='Название задачи'

@@ -57,11 +57,24 @@ namespace Tasky.Infrastructure.Services
                 EndAt = request.EndAt,
                 Deadline = request.Deadline,
                 Priority = request.Priority ?? Tasky.Domain.Enums.TaskPriority.Low,
-                ListId = request.ListId
+                ListId = request.ListId,
+                NotifyAt = request.NotifyAt
             };
 
             _db.Tasks.Add(task);
             await _db.SaveChangesAsync();
+
+            if (request.NotifyAt.HasValue)
+            {
+                _db.NotificationsQueue.Add(new NotificationQueue
+                {
+                    UserId = userId,
+                    TaskId = task.Id,
+                    Type = Tasky.Domain.Enums.NotificationType.TaskReminder,
+                    ScheduledAt = request.NotifyAt.Value,
+                });
+                await _db.SaveChangesAsync();
+            }
 
             var googleState = await _db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == userId);
             if (googleState is not null)
@@ -133,6 +146,35 @@ namespace Tasky.Infrastructure.Services
             }
 
             task.ListId = request.ListId;
+            task.NotifyAt = request.NotifyAt;
+
+            // Update or remove notification queue entry
+            var existingNotification = await _db.NotificationsQueue
+                .FirstOrDefaultAsync(n => n.TaskId == task.Id
+                    && n.Type == Tasky.Domain.Enums.NotificationType.TaskReminder
+                    && !n.IsSent);
+
+            if (request.NotifyAt.HasValue)
+            {
+                if (existingNotification is not null)
+                {
+                    existingNotification.ScheduledAt = request.NotifyAt.Value;
+                }
+                else
+                {
+                    _db.NotificationsQueue.Add(new NotificationQueue
+                    {
+                        UserId = userId,
+                        TaskId = task.Id,
+                        Type = Tasky.Domain.Enums.NotificationType.TaskReminder,
+                        ScheduledAt = request.NotifyAt.Value,
+                    });
+                }
+            }
+            else if (existingNotification is not null)
+            {
+                _db.NotificationsQueue.Remove(existingNotification);
+            }
 
             await _db.SaveChangesAsync();
 
@@ -285,6 +327,12 @@ namespace Tasky.Infrastructure.Services
             var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == userId);
             if (task == null)
                 return false;
+
+            // Remove pending notifications
+            var pendingNotifications = await _db.NotificationsQueue
+                .Where(n => n.TaskId == taskId && !n.IsSent)
+                .ToListAsync();
+            _db.NotificationsQueue.RemoveRange(pendingNotifications);
 
             if (!string.IsNullOrEmpty(task.GoogleEventId))
             {

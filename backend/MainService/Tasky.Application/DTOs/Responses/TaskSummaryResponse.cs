@@ -15,5 +15,6 @@ public record TaskSummaryResponse(
     TaskPriority Priority,
     TaskCompletionStatus Status,
     DateTime CreatedAt,
-    string? GoogleEventId
+    string? GoogleEventId,
+    DateTime? NotifyAt
 );

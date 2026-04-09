@@ -17,5 +17,6 @@ public record TaskResponse(
     TaskCompletionStatus Status,
     DateTime CreatedAt,
     DateTime? CompletedAt,
-    string? GoogleEventId
+    string? GoogleEventId,
+    DateTime? NotifyAt
 );

@@ -9,5 +9,6 @@ public record TaskCreateRequest
     DateTime? EndAt,
     DateTime? Deadline,
     TaskPriority? Priority,
-    int? ListId);
+    int? ListId,
+    DateTime? NotifyAt);
 

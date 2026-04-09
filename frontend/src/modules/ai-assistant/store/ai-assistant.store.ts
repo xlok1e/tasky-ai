@@ -56,6 +56,7 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 		endDate: task.endAt ? new Date(task.endAt) : null,
 		deadline: null,
 		priority: PENDING_TASK_PRIORITY_MAP[task.priority],
+		notifyAt: null,
 	}
 }
 

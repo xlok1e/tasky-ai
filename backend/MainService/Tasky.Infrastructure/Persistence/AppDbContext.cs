@@ -53,5 +53,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(e => e.Task)
             .WithMany(t => t.ExecutionHistory)
             .HasForeignKey(e => e.TaskId);
+
+        modelBuilder.Entity<NotificationQueue>()
+            .HasOne(n => n.Task)
+            .WithMany()
+            .HasForeignKey(n => n.TaskId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

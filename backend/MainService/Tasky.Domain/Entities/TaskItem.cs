@@ -20,6 +20,7 @@ public class TaskItem
     public TaskCompletionStatus Status { get; set; } = TaskCompletionStatus.InProgress;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+    public DateTime? NotifyAt { get; set; }
 
     public string? GoogleEventId { get; set; }
 

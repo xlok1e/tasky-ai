@@ -27,16 +27,25 @@ const COLLAPSED_WIDTH = 68
 export function Sidebar() {
 	const pathname = usePathname()
 	const [isCollapsed, setIsCollapsed] = useState(false)
+	const [isListsAtBottom, setIsListsAtBottom] = useState(false)
+
+	function handleListsScroll(e: React.UIEvent<HTMLDivElement>) {
+		const el = e.currentTarget
+		setIsListsAtBottom(el.scrollHeight - el.scrollTop <= el.clientHeight + 1)
+	}
 	const lists = useListsStore(s => s.lists)
 	const { onOpen: openListsModal } = useListsModal()
 	const { isConnected, isSyncing, sync } = useGoogleStore()
 
 	return (
 		<aside
-			style={{ width: isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH }}
-			className='flex flex-col justify-between h-screen border-r bg-background shrink-0 px-[18px] py-6 transition-[width] duration-150 ease-in-out'
+			style={{
+				width: isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
+				padding: isCollapsed ? '24px 8px' : ' 24px 16px',
+			}}
+			className='flex flex-col justify-between h-screen border-r bg-background shrink-0 transition-[width] duration-150 ease-in-out'
 		>
-			<div className='flex flex-col'>
+			<div className='flex flex-col flex-1 min-h-0 overflow-hidden'>
 				<div
 					className={cn(
 						'flex mb-9 items-center',
@@ -51,7 +60,7 @@ export function Sidebar() {
 								: 'max-w-xs opacity-100',
 						)}
 					>
-						<Link href='/inbox' className='flex items-center gap-[6px]'>
+						<Link href='/calendar' className='flex items-center gap-[6px]'>
 							<img
 								src='/images/Logo.svg'
 								alt='TaskyAI Logo'
@@ -61,17 +70,29 @@ export function Sidebar() {
 						</Link>
 					</div>
 
-					<Button
-						className='w-[40px] h-[40px] rounded-[6px] shrink-0'
-						variant='ghost'
-						onClick={() => setIsCollapsed(v => !v)}
-					>
-						{isCollapsed ? (
-							<PanelLeftOpen className='size-[18px]' />
-						) : (
+					{isCollapsed ? (
+						<button
+							className='w-[35px] h-[35px] rounded-[6px] flex items-center justify-center hover:bg-accent/50 transition-colors shrink-0 group'
+							onClick={() => setIsCollapsed(false)}
+						>
+							<span className='relative flex items-center justify-center'>
+								<img
+									src='/images/Logo.svg'
+									alt='TaskyAI Logo'
+									className='mb-[5px] transition-opacity duration-150 group-hover:opacity-0'
+								/>
+								<PanelLeftOpen className='size-[18px] absolute transition-opacity duration-150 opacity-0 group-hover:opacity-100' />
+							</span>
+						</button>
+					) : (
+						<Button
+							className='w-[35px] h-[35px] rounded-[6px] shrink-0'
+							variant='ghost'
+							onClick={() => setIsCollapsed(v => !v)}
+						>
 							<PanelLeftClose className='size-[18px]' />
-						)}
-					</Button>
+						</Button>
+					)}
 				</div>
 
 				<nav
@@ -95,7 +116,7 @@ export function Sidebar() {
 								'transition-all duration-0',
 								isCollapsed
 									? 'max-h-0 opacity-0 overflow-hidden'
-									: 'max-h-96 opacity-100',
+									: 'flex-1 min-h-0 flex flex-col opacity-100',
 							)}
 						>
 							<div className='h-px bg-border my-4 -mx-[18px] ml-[1px]' />
@@ -108,7 +129,7 @@ export function Sidebar() {
 									</label>
 								</div>
 								<Button
-									className='w-[32px] h-[32px] rounded-[6px]'
+									className='w-[32px] h-[32px] rounded-[6px] hover:bg-secondary/40'
 									variant='ghost'
 									onClick={openListsModal}
 								>
@@ -116,15 +137,26 @@ export function Sidebar() {
 								</Button>
 							</div>
 
-							<div className='flex flex-col gap-1.5'>
-								{lists.map(list => (
-									<SidebarListItem
-										key={list.id}
-										list={list}
-										isActive={pathname === `/lists/${list.id}`}
-										isCollapsed={isCollapsed}
-									/>
-								))}
+							<div className='relative flex-1 min-h-0'>
+								<div
+									className='flex flex-col gap-1.5 h-full overflow-y-auto no-scrollbar'
+									onScroll={handleListsScroll}
+								>
+									{lists.map(list => (
+										<SidebarListItem
+											key={list.id}
+											list={list}
+											isActive={pathname === `/lists/${list.id}`}
+											isCollapsed={isCollapsed}
+										/>
+									))}
+								</div>
+								<div
+									className={cn(
+										'pointer-events-none absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-background to-transparent transition-opacity duration-200 ',
+										isListsAtBottom ? 'opacity-0' : 'opacity-100',
+									)}
+								/>
 							</div>
 						</div>
 
@@ -152,7 +184,7 @@ export function Sidebar() {
 						className={cn(
 							'flex items-center rounded-[6px] transition-colors overflow-hidden hover:bg-accent/50 disabled:opacity-50',
 							isCollapsed
-								? 'w-[40px] h-[40px] justify-center'
+								? 'w-[35px]! h-[35px]! justify-center'
 								: 'gap-2 w-full px-2.5 py-1 text-[18px]',
 						)}
 					>
@@ -180,7 +212,7 @@ export function Sidebar() {
 					className={cn(
 						'flex items-center rounded-[6px] transition-colors overflow-hidden hover:bg-accent/50',
 						isCollapsed
-							? 'w-[40px] h-[40px] justify-center'
+							? 'w-[35px] h-[35px] justify-center'
 							: 'gap-2 w-full px-2.5 py-1 text-[18px]',
 					)}
 				>

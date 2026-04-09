@@ -108,6 +108,8 @@ export function useCalendarView(view: View) {
 			end,
 			isAllDay: droppedAsAllDay,
 		}: EventInteractionArgs<CalendarTaskEvent>) => {
+			if (!start || !end || isNaN(new Date(start).getTime())) return
+
 			const nextStart = new Date(start)
 			const nextAllDay = deriveAllDay(
 				nextStart,

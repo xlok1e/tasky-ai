@@ -100,9 +100,9 @@ export function WorkTimeStep({
 							<SelectValue placeholder='Выберите часовой пояс' />
 						</SelectTrigger>
 						<SelectContent>
-						{TIMEZONE_OPTIONS.map(option => (
-							<SelectItem key={option.value} value={option.value}>
-								{option.label}
+							{TIMEZONE_OPTIONS.map(option => (
+								<SelectItem key={option.value} value={option.value}>
+									{option.label}
 								</SelectItem>
 							))}
 						</SelectContent>

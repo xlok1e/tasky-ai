@@ -24,7 +24,7 @@ const TASKS_PAGE_SIZE = 20
 type SortDirection = 'asc' | 'desc'
 
 const DATE_SORT_OPTIONS: Array<{ value: SortDirection; label: string }> = [
-	{ value: 'asc', label: 'По дате' },
+	{ value: 'asc', label: 'Сначала старые' },
 	{ value: 'desc', label: 'Сначала новые' },
 ]
 

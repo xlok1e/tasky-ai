@@ -302,3 +302,7 @@
 		transform: translate3d(-12px, -8px, 0) scale(1.12);
 	}
 }
+
+@utility no-scrollbar {
+	@apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+}

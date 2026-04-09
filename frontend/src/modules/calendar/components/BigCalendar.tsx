@@ -266,6 +266,21 @@ export function BigCalendar({
 
 	const components = useMemo<CalendarProps<CalendarTaskEvent>['components']>(
 		() => ({
+			month: {
+				header: ({ date: headerDate }: { date: Date }) => (
+					<div className='py-1 text-center'>
+						<span>{format(headerDate, 'EEEEEE', { locale: ru })}</span>
+					</div>
+				),
+			},
+			day: {
+				header: ({ date: headerDate }: { date: Date }) => (
+					<div className='flex flex-col items-center py-1'>
+						<span>{format(headerDate, 'EEEEEE', { locale: ru })}</span>
+						<span>{format(headerDate, 'd')}</span>
+					</div>
+				),
+			},
 			week: {
 				header: ({ date: headerDate }: { date: Date }) => (
 					<div className='flex flex-col items-center py-1'>

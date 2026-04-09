@@ -258,9 +258,9 @@ namespace Tasky.Infrastructure.ExternalServices
             OUTPUT FORMAT (always this exact structure):
             {"reply":"<Russian text>","intent":<null|"create_task"|"update_task"|"query_tasks"|"get_statistics"|"sync_google"|"disconnect_google">,"pendingTask":<object|null>,"pendingTasks":<array|null>,"pendingUpdate":<object|null>,"pendingQuery":<object|null>}
 
-            pendingTask schema:   {"title":"","description":null,"startAt":null,"endAt":null,"isAllDay":false,"priority":"Low","listName":null}
+            pendingTask schema:   {"title":"","description":null,"startAt":null,"endAt":null,"isAllDay":false,"priority":"Low","listName":null,"notifyAt":null}
             pendingTasks schema:  array of pendingTask objects — use ONLY when user requests 2+ tasks at once; set pendingTask=null in that case
-            pendingUpdate schema: {"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null,"listName":null}
+            pendingUpdate schema: {"taskId":0,"title":null,"description":null,"startAt":null,"endAt":null,"isAllDay":null,"status":null,"listName":null,"notifyAt":null,"clearNotifyAt":false}
             pendingQuery schema:  {"dateFrom":null,"dateTo":null,"listName":null,"priority":null,"status":null}
 
             === INTENT RULES ===
@@ -296,6 +296,13 @@ namespace Tasky.Infrastructure.ExternalServices
             - isAllDay=false → endAt = startAt + duration if user specified it; otherwise startAt + 1 hour.
             - priority: "Low" by default unless user says otherwise ("высокий", "срочно" → "High").
             - listName: exact name from Lists above, or null.
+            - notifyAt: ISO 8601 UTC datetime for the reminder, or null if user did not mention a reminder.
+              • "уведоми за 30 минут" / "напомни за полчаса до" → notifyAt = startAt − 30 min (converted to UTC)
+              • "уведоми в 15:30" / "напомни в 9:00" → convert that clock time ({{tzLabel}}) to UTC; MUST be < startAt
+              • "уведоми за час" → notifyAt = startAt − 60 min
+              • "напомни за 15 минут" → notifyAt = startAt − 15 min
+              • If notifyAt would be ≥ startAt or in the past → set notifyAt=null and mention this in reply
+              • If user does not mention any reminder → notifyAt=null
             - reply MUST contain ONLY the confirmation question. Do NOT mention Google Calendar, do NOT add any extra comments.
 
             [intent = "update_task"] User wants to change an existing task:
@@ -308,6 +315,8 @@ namespace Tasky.Infrastructure.ExternalServices
             - Set ONLY changed fields; all other fields = null.
             - status values: "Completed" | "InProgress" | null.
             - listName: exact name from Lists above if user wants to move task to another list, otherwise null.
+            - notifyAt: set to ISO 8601 UTC datetime if user wants to add/change reminder; use same rules as in create_task.
+            - clearNotifyAt: set to true (and notifyAt=null) ONLY when user explicitly asks to remove the reminder ("убери напоминание", "удали уведомление", "без напоминания").
 
             [Undo / revert last confirmed change] User says "верни как было", "отмени изменение", "передумал", "откати", "верни обратно", etc. after a CONFIRMED update:
             - Look at the conversation history to find the last confirmed update (the previous pendingUpdate values that were confirmed).
@@ -566,7 +575,8 @@ namespace Tasky.Infrastructure.ExternalServices
             EndAt = el.GetDateOrNull("endAt"),
             IsAllDay = el.GetBoolOrDefault("isAllDay"),
             Priority = el.GetStringOrEmpty("priority") is { Length: > 0 } p ? p : "Low",
-            ListName = el.GetStringOrNull("listName")
+            ListName = el.GetStringOrNull("listName"),
+            NotifyAt = el.GetDateOrNull("notifyAt")
         };
 
         private static PendingUpdateDto ParsePendingUpdate(JsonElement el) => new()
@@ -582,7 +592,9 @@ namespace Tasky.Infrastructure.ExternalServices
             Status = el.GetStringOrNull("status") is { } s
                 ? Enum.TryParse<TaskCompletionStatus>(s, ignoreCase: true, out var st) ? st : null
                 : null,
-            ListName = el.GetStringOrNull("listName")
+            ListName = el.GetStringOrNull("listName"),
+            NotifyAt = el.GetDateOrNull("notifyAt"),
+            ClearNotifyAt = el.TryGetProperty("clearNotifyAt", out var cnEl) && cnEl.ValueKind == JsonValueKind.True
         };
 
 
@@ -664,6 +676,7 @@ namespace Tasky.Infrastructure.ExternalServices
                     t.Title,
                     t.StartAt,
                     t.IsAllDay,
+                    t.NotifyAt,
                     ListName = t.List != null ? t.List.Name : (string?)null
                 })
                 .ToListAsync();
@@ -682,6 +695,12 @@ namespace Tasky.Infrastructure.ExternalServices
 
                 if (!string.IsNullOrEmpty(t.ListName))
                     parts.Add($"[{t.ListName}]");
+
+                if (t.NotifyAt.HasValue)
+                {
+                    var localNotify = TimeZoneInfo.ConvertTimeFromUtc(t.NotifyAt.Value, userTz);
+                    parts.Add($"🔔 {localNotify:HH:mm}");
+                }
 
                 return string.Join(" — ", parts);
             });
@@ -900,11 +919,24 @@ namespace Tasky.Infrastructure.ExternalServices
                 StartAt = startAt,
                 EndAt = endAt,
                 ListId = listId,
+                NotifyAt = pending.NotifyAt,
                 CreatedAt = DateTime.UtcNow
             };
 
             _db.Tasks.Add(task);
             await _db.SaveChangesAsync();
+
+            if (pending.NotifyAt.HasValue)
+            {
+                _db.NotificationsQueue.Add(new NotificationQueue
+                {
+                    UserId = userId,
+                    TaskId = task.Id,
+                    Type = Tasky.Domain.Enums.NotificationType.TaskReminder,
+                    ScheduledAt = pending.NotifyAt.Value,
+                });
+                await _db.SaveChangesAsync();
+            }
 
             if (googleState is not null)
             {
@@ -968,6 +1000,36 @@ namespace Tasky.Infrastructure.ExternalServices
                 if (listId is null)
                     throw new KeyNotFoundException($"Список «{pending.ListName}» не найден.");
                 task.ListId = listId;
+            }
+
+            // Handle notification changes
+            if (pending.NotifyAt.HasValue || pending.ClearNotifyAt)
+            {
+                var existingNotification = await _db.NotificationsQueue
+                    .FirstOrDefaultAsync(n => n.TaskId == task.Id
+                        && n.Type == NotificationType.TaskReminder
+                        && !n.IsSent);
+
+                if (pending.ClearNotifyAt)
+                {
+                    task.NotifyAt = null;
+                    if (existingNotification is not null)
+                        _db.NotificationsQueue.Remove(existingNotification);
+                }
+                else if (pending.NotifyAt.HasValue)
+                {
+                    task.NotifyAt = pending.NotifyAt;
+                    if (existingNotification is not null)
+                        existingNotification.ScheduledAt = pending.NotifyAt.Value;
+                    else
+                        _db.NotificationsQueue.Add(new NotificationQueue
+                        {
+                            UserId = userId,
+                            TaskId = task.Id,
+                            Type = NotificationType.TaskReminder,
+                            ScheduledAt = pending.NotifyAt.Value,
+                        });
+                }
             }
 
             await _db.SaveChangesAsync();

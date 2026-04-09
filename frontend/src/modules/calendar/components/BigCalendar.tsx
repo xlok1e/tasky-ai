@@ -251,6 +251,10 @@ export function BigCalendar({
 			style.color = getContrastColor('#809671')
 		}
 
+		if (event.resource.isCompleted) {
+			style.opacity = 0.45
+		}
+
 		const durationMs = event.end.getTime() - event.start.getTime()
 		const isCompact = durationMs <= 15 * 60 * 1000
 

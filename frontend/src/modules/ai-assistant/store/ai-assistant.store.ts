@@ -56,7 +56,7 @@ function pendingTaskToOptimisticTask(task: PendingTask, tempId: number): Task {
 		endDate: task.endAt ? new Date(task.endAt) : null,
 		deadline: null,
 		priority: PENDING_TASK_PRIORITY_MAP[task.priority],
-		notifyAt: null,
+		notifyAt: task.notifyAt ? new Date(task.notifyAt) : null,
 	}
 }
 
@@ -70,6 +70,9 @@ function buildAssistantReply(
 
 	if (pendingTask) {
 		content += `\n\nЗадача: \nНазвание: ${pendingTask.title}\nОписание: ${pendingTask.description ?? '—'}\nПриоритет: ${pendingTask.priority}\nДата исполнения: ${formatDateRange(pendingTask.startAt, pendingTask.endAt, pendingTask.isAllDay)}\nСписок: ${pendingTask.listId ?? '—'}\n`
+		if (pendingTask.notifyAt) {
+			content += `Напоминание: ${new Date(pendingTask.notifyAt).toLocaleString('ru')}\n`
+		}
 	}
 
 	return {

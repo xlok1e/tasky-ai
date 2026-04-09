@@ -27,7 +27,7 @@ export default function RootLayout({
 		<html lang='ru' suppressHydrationWarning>
 			<body
 				className={`${lineSeedJP.variable} font-sans antialiased bg-background`}
-				suppressHydrationWarning={true}
+				suppressHydrationWarning
 			>
 				<Providers>
 					{children}

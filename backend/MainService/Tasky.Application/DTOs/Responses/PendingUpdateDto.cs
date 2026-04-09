@@ -12,4 +12,6 @@ public sealed class PendingUpdateDto
     public bool? IsAllDay { get; init; }
     public TaskCompletionStatus? Status { get; init; }
     public string? ListName { get; init; }
+    public DateTime? NotifyAt { get; init; }
+    public bool ClearNotifyAt { get; init; }
 }

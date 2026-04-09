@@ -87,6 +87,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 
 builder.Services.AddHostedService<TelegramBotService>();
 builder.Services.AddHostedService<NotificationSchedulerService>();
+builder.Services.AddHostedService<DailyDigestService>();
 
 builder.Services.AddHttpClient("gptunnel", client =>
 {

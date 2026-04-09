@@ -44,6 +44,7 @@ export function NotificationSettingRow({
 			<TimeInput
 				value={time}
 				onChange={onTimeChange}
+				onBlur={onTimeBlur}
 				className='h-[42px] rounded-md border-border bg-card'
 			/>
 		</div>

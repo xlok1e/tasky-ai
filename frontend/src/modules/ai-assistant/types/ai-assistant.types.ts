@@ -14,6 +14,7 @@ export interface PendingTask {
 	endAt: string | null
 	isAllDay: boolean
 	listId: string | null
+	notifyAt: string | null
 }
 
 export interface PendingUpdate {
@@ -24,6 +25,8 @@ export interface PendingUpdate {
 	endAt: string | null
 	isAllDay: boolean | null
 	status: TaskStatus | null
+	notifyAt: string | null
+	clearNotifyAt: boolean
 }
 
 export type PendingActionStatus = 'confirmed' | 'rejected'

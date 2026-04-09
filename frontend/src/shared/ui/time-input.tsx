@@ -5,6 +5,7 @@ interface TimeInputProps {
 	id?: string
 	value: string // "HH:MM"
 	onChange: (value: string) => void
+	onBlur?: () => void
 	className?: string
 	disabled?: boolean
 }
@@ -13,6 +14,7 @@ function TimeInput({
 	id,
 	value,
 	onChange,
+	onBlur,
 	className,
 	disabled,
 }: TimeInputProps) {
@@ -53,6 +55,7 @@ function TimeInput({
 				disabled={disabled}
 				value={String(hours).padStart(2, '0')}
 				onChange={handleHours}
+				onBlur={onBlur}
 				className={inputClass}
 				aria-label='часы'
 			/>
@@ -66,6 +69,7 @@ function TimeInput({
 				disabled={disabled}
 				value={String(minutes).padStart(2, '0')}
 				onChange={handleMinutes}
+				onBlur={onBlur}
 				className={inputClass}
 				aria-label='минуты'
 			/>

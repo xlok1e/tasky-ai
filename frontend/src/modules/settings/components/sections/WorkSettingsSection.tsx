@@ -69,6 +69,7 @@ export function WorkSettingsSection({
 					<TimeInput
 						value={workDayStart}
 						onChange={onWorkDayStartChange}
+						onBlur={onWorkDayStartBlur}
 						className={timeInputClassName}
 					/>
 				</SettingsField>
@@ -77,6 +78,7 @@ export function WorkSettingsSection({
 					<TimeInput
 						value={workDayEnd}
 						onChange={onWorkDayEndChange}
+						onBlur={onWorkDayEndBlur}
 						className={timeInputClassName}
 					/>
 				</SettingsField>

@@ -389,6 +389,12 @@ public class TelegramBotService(
             return;
         }
 
+        if (data.StartsWith("digest_reschedule:") || data.StartsWith("digest_keep:"))
+        {
+            await HandleDigestRescheduleCallbackAsync(bot, chatId, messageId, originalText, data, ct);
+            return;
+        }
+
         if (data == "cancel")
         {
             _pendingOperations.TryRemove(chatId, out _);
@@ -524,6 +530,100 @@ public class TelegramBotService(
 
             logger.LogInformation("Task {TaskId} notification snoozed by user {UserId}", taskId, user.Id);
         }
+    }
+
+    private async Task HandleDigestRescheduleCallbackAsync(
+        ITelegramBotClient bot, long chatId, int messageId,
+        string originalText, string data, CancellationToken ct)
+    {
+        var colonIndex = data.IndexOf(':');
+        if (colonIndex < 0)
+        {
+            await bot.EditMessageText(chatId, messageId, originalText, cancellationToken: ct);
+            return;
+        }
+
+        var action = data[..colonIndex];
+        var idsString = data[(colonIndex + 1)..];
+        var taskIds = idsString.Split(',')
+            .Select(s => int.TryParse(s, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToList();
+
+        if (taskIds.Count == 0)
+        {
+            await bot.EditMessageText(chatId, messageId, originalText, cancellationToken: ct);
+            return;
+        }
+
+        var user = await FindUserByChatIdAsync(chatId, ct);
+        if (user is null) return;
+
+        if (action == "digest_keep")
+        {
+            await bot.EditMessageText(chatId, messageId,
+                $"✋ Задачи оставлены без изменений\n\n{originalText}",
+                cancellationToken: ct);
+            return;
+        }
+
+        // digest_reschedule — move tasks to tomorrow at the same time
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var tasks = await db.Tasks
+            .Where(t => taskIds.Contains(t.Id) && t.UserId == user.Id)
+            .ToListAsync(ct);
+
+        var rescheduledCount = 0;
+        foreach (var task in tasks)
+        {
+            if (task.StartAt.HasValue)
+            {
+                task.StartAt = task.StartAt.Value.AddDays(1);
+                if (task.EndAt.HasValue)
+                    task.EndAt = task.EndAt.Value.AddDays(1);
+                if (task.NotifyAt.HasValue)
+                    task.NotifyAt = task.NotifyAt.Value.AddDays(1);
+                rescheduledCount++;
+            }
+        }
+
+        // Also move notification queue entries
+        var notificationEntries = await db.NotificationsQueue
+            .Where(n => taskIds.Contains(n.TaskId!.Value)
+                && n.UserId == user.Id
+                && !n.IsSent
+                && n.Type == NotificationType.TaskReminder)
+            .ToListAsync(ct);
+
+        foreach (var n in notificationEntries)
+            n.ScheduledAt = n.ScheduledAt.AddDays(1);
+
+        await db.SaveChangesAsync(ct);
+
+        // Sync with Google Calendar if connected
+        var googleState = await db.GoogleSyncStates.FirstOrDefaultAsync(g => g.UserId == user.Id, ct);
+        if (googleState is not null)
+        {
+            var googleCalendar = scope.ServiceProvider.GetRequiredService<IGoogleCalendarService>();
+            try
+            {
+                await googleCalendar.RefreshTokenIfNeededAsync(googleState);
+                foreach (var task in tasks.Where(t => !string.IsNullOrEmpty(t.GoogleEventId)))
+                {
+                    try { await googleCalendar.UpdateEventAsync(googleState, task.GoogleEventId!, task); }
+                    catch { /* non-critical */ }
+                }
+            }
+            catch { /* non-critical */ }
+        }
+
+        await bot.EditMessageText(chatId, messageId,
+            $"📅 Перенесено задач на завтра: {rescheduledCount}\n\n{originalText}",
+            cancellationToken: ct);
+
+        logger.LogInformation("Rescheduled {Count} tasks to tomorrow for user {UserId}", rescheduledCount, user.Id);
     }
 
     private async Task<Tasky.Domain.Entities.User?> FindUserByChatIdAsync(long chatId, CancellationToken ct)

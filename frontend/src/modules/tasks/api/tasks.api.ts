@@ -12,6 +12,8 @@ interface FetchTasksParams {
 	limit?: number;
 	dateOrder?: "asc" | "desc";
 	priorityOrder?: "asc" | "desc";
+	startFrom?: string;
+	startTo?: string;
 }
 
 export async function fetchTasks(params?: FetchTasksParams): Promise<TaskResponse[]> {
@@ -23,6 +25,8 @@ export async function fetchTasks(params?: FetchTasksParams): Promise<TaskRespons
 			limit: params?.limit,
 			dateOrder: params?.dateOrder,
 			priorityOrder: params?.priorityOrder,
+			startFrom: params?.startFrom,
+			startTo: params?.startTo,
 		},
 	});
 	return response.data;

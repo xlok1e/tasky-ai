@@ -173,26 +173,38 @@ public class GoogleController : ControllerBase
         if (pushedCount > 0)
             await _db.SaveChangesAsync();
 
-        var listRequest = calendarService.Events.List(calendarId);
-        listRequest.SingleEvents = true;
-        listRequest.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
-        if (state.LastSyncAt.HasValue)
-            listRequest.UpdatedMinDateTimeOffset = state.LastSyncAt.Value;
+        var allEvents = new List<Event>();
+        string? pageToken = null;
 
-        Events events;
-        try
+        do
         {
-            events = await listRequest.ExecuteAsync();
+            var listRequest = calendarService.Events.List(calendarId);
+            listRequest.SingleEvents = true;
+            listRequest.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
+            listRequest.TimeMinDateTimeOffset = DateTimeOffset.UtcNow.AddYears(-1);
+            listRequest.MaxResults = 2500;
+            if (pageToken is not null)
+                listRequest.PageToken = pageToken;
+
+            Events eventsPage;
+            try
+            {
+                eventsPage = await listRequest.ExecuteAsync();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(502, new { error = $"Ошибка Google Calendar API: {ex.Message}" });
+            }
+
+            allEvents.AddRange(eventsPage.Items ?? []);
+            pageToken = eventsPage.NextPageToken;
         }
-        catch (Exception ex)
-        {
-            return StatusCode(502, new { error = $"Ошибка Google Calendar API: {ex.Message}" });
-        }
+        while (pageToken is not null);
 
         var createdCount = 0;
         var updatedCount = 0;
 
-        foreach (var ev in events.Items ?? [])
+        foreach (var ev in allEvents)
         {
             if (ev.Status == "cancelled") continue;
 

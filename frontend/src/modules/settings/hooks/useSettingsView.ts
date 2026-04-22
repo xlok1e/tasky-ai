@@ -1,11 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAuthStore } from "@domains/auth/store/auth.store";
 import { getGoogleAuthUrl } from "@/domains/google/api/google.api";
 import { useGoogleStore } from "@/domains/google/store/google.store";
+import { useTasksStore } from "@/modules/tasks/store/tasks.store";
 import { useUserStore } from "@/domains/user/store/user.store";
 import type { UpdateUserSettingsRequest } from "@/domains/user/types/user.types";
 import {
@@ -25,9 +26,11 @@ function toApiTime(value: string) {
 
 export function useSettingsView() {
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { user, clearToken } = useAuthStore();
 	const { profile, settings, updateSettings } = useUserStore();
-	const { isConnected } = useGoogleStore();
+	const { isConnected, disconnect, sync } = useGoogleStore();
+	const fetchTasks = useTasksStore(state => state.fetchTasks);
 
 	const [workDayStart, setWorkDayStart] = useState(DEFAULT_SETTINGS_VALUES.workDayStart);
 	const [workDayEnd, setWorkDayEnd] = useState(DEFAULT_SETTINGS_VALUES.workDayEnd);
@@ -41,6 +44,8 @@ export function useSettingsView() {
 		DEFAULT_SETTINGS_VALUES.eveningNotificationTime,
 	);
 	const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
+	const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
+	const [isDisconnecting, setIsDisconnecting] = useState(false);
 
 	const timezoneOptions = useMemo<TimeZoneOption[]>(() => {
 		if (!timeZone) return TIMEZONE_OPTIONS;
@@ -48,6 +53,16 @@ export function useSettingsView() {
 
 		return [{ value: timeZone, label: timeZone }, ...TIMEZONE_OPTIONS];
 	}, [timeZone]);
+
+	useEffect(() => {
+		if (searchParams.get("googleConnected") !== "1") return;
+
+		const url = new URL(window.location.href);
+		url.searchParams.delete("googleConnected");
+		router.replace(url.pathname + url.search, { scroll: false });
+
+		void sync();
+	}, []);
 
 	useEffect(() => {
 		if (!settings) return;
@@ -113,11 +128,34 @@ export function useSettingsView() {
 	const handleGoogleAction = async () => {
 		setIsGoogleAuthLoading(true);
 		try {
-			const authUrl = await getGoogleAuthUrl(window.location.href);
+			const redirectUrl = new URL(window.location.href);
+			redirectUrl.searchParams.set("googleConnected", "1");
+			const authUrl = await getGoogleAuthUrl(redirectUrl.toString());
 			window.location.href = authUrl;
 		} catch {
 			toast.error("Не удалось начать авторизацию Google");
 			setIsGoogleAuthLoading(false);
+		}
+	};
+
+	const handleDisconnectClick = () => {
+		setIsDisconnectModalOpen(true);
+	};
+
+	const handleDisconnectCancel = () => {
+		setIsDisconnectModalOpen(false);
+	};
+
+	const handleDisconnectConfirm = async () => {
+		setIsDisconnecting(true);
+		try {
+			await disconnect();
+			setIsDisconnectModalOpen(false);
+			void fetchTasks();
+		} catch {
+			toast.error("Не удалось отключить синхронизацию");
+		} finally {
+			setIsDisconnecting(false);
 		}
 	};
 
@@ -159,6 +197,11 @@ export function useSettingsView() {
 		handleMorningTimeBlur,
 		handleEveningTimeBlur,
 		handleGoogleAction,
+		handleDisconnectClick,
+		handleDisconnectCancel,
+		handleDisconnectConfirm,
+		isDisconnectModalOpen,
+		isDisconnecting,
 		handleLogout,
 	};
 }

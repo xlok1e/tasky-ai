@@ -6,12 +6,14 @@ import {
 	addDays,
 	addMonths,
 	addWeeks,
+	endOfWeek,
 	format,
+	startOfWeek,
 	subDays,
 	subMonths,
 	subWeeks,
 } from 'date-fns'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Views } from 'react-big-calendar'
 import type { View } from 'react-big-calendar'
 import { EventInteractionArgs } from 'react-big-calendar/lib/addons/dragAndDrop'
@@ -25,8 +27,16 @@ export function useCalendarView(view: View) {
 	const tasks = useTasksStore(s => s.tasks)
 	const updateTask = useTasksStore(s => s.updateTask)
 	const deleteTask = useTasksStore(s => s.deleteTask)
+	const fetchTasksForRange = useTasksStore(s => s.fetchTasksForRange)
 	const lists = useListsStore(s => s.lists)
 	const { openNew, openEdit } = useTaskModal()
+
+	useEffect(() => {
+		const weekStart = startOfWeek(date, { weekStartsOn: 1 })
+		const rangeStart = subWeeks(weekStart, 1)
+		const rangeEnd = endOfWeek(addWeeks(weekStart, 1), { weekStartsOn: 1 })
+		void fetchTasksForRange(rangeStart, rangeEnd)
+	}, [date, fetchTasksForRange])
 
 	const monthLabel =
 		view === Views.DAY

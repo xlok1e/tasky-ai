@@ -42,6 +42,7 @@ export const useGoogleStore = create<GoogleState>((set) => ({
 			return result;
 		} catch {
 			set({ isSyncing: false });
+			toast.error("Не удалось синхронизировать Google Calendar");
 			return null;
 		}
 	},

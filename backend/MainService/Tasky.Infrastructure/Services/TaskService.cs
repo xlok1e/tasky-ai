@@ -212,6 +212,8 @@ namespace Tasky.Infrastructure.Services
             bool inboxOnly,
             Tasky.Domain.Enums.TaskPriority? priority,
             DateTime? dueDate,
+            DateTime? startFrom,
+            DateTime? startTo,
             Tasky.Domain.Enums.TaskCompletionStatus? status,
             int? offset,
             int? limit,
@@ -233,6 +235,12 @@ namespace Tasky.Infrastructure.Services
 
             if (dueDate.HasValue)
                 query = query.Where(t => t.Deadline.HasValue && t.Deadline.Value.Date == dueDate.Value.Date);
+
+            if (startFrom.HasValue)
+                query = query.Where(t => t.StartAt >= startFrom.Value);
+
+            if (startTo.HasValue)
+                query = query.Where(t => t.StartAt <= startTo.Value);
 
             if (status.HasValue)
                 query = query.Where(t => t.Status == status.Value);

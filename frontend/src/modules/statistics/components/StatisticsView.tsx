@@ -9,9 +9,11 @@ import { StatisticsMetricsGrid } from '@modules/statistics/components/Statistics
 import { StatisticsProductivePeriod } from '@modules/statistics/components/StatisticsProductivePeriod'
 import { useStatisticsView } from '@modules/statistics/hooks/useStatisticsView'
 import { PageLoader } from '@shared/ui/page-loader'
+import { useGoogleStore } from '@/domains/google/store/google.store'
 
 export function StatisticsView() {
 	const statisticsView = useStatisticsView()
+	const isGoogleConnected = useGoogleStore(state => state.isConnected)
 
 	return (
 		<div className='flex w-full flex-col gap-[45px] pb-8'>
@@ -49,12 +51,16 @@ export function StatisticsView() {
 						isLoading={statisticsView.isLoading}
 					/>
 
-					<Separator />
+					{!isGoogleConnected && (
+						<>
+							<Separator />
 
-					<StatisticsDistributionChart
-						data={statisticsView.statisticsData.pieChartData}
-						isLoading={statisticsView.isLoading}
-					/>
+							<StatisticsDistributionChart
+								data={statisticsView.statisticsData.pieChartData}
+								isLoading={statisticsView.isLoading}
+							/>
+						</>
+					)}
 				</div>
 			)}
 		</div>

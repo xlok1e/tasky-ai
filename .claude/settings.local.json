@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(xargs basename *)",
+      "Bash(find /Users/xlok1e/Documents/tasky-college/backend -name \"*.cs\" -type f -exec grep -l \"Events.List\\\\|SyncAsync\\\\|FetchEvents\" {} \\\\;)"
+    ]
+  }
+}

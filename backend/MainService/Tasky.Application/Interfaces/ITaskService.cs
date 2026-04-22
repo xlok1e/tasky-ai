@@ -15,6 +15,8 @@ namespace Tasky.Application.Interfaces
             bool inboxOnly,
             TaskPriority? priority,
             DateTime? dueDate,
+            DateTime? startFrom,
+            DateTime? startTo,
             TaskCompletionStatus? status,
             int? offset,
             int? limit,

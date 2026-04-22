@@ -691,7 +691,7 @@ public class TelegramBotService(
         using var scope = scopeFactory.CreateScope();
         var taskService = scope.ServiceProvider.GetRequiredService<ITaskService>();
 
-        var tasks = await taskService.GetAllAsync(user.Id, null, false, null, null, null, null, null);
+        var tasks = await taskService.GetAllAsync(user.Id, 0, false, null, null, null, null, null, null, null);
 
         var userTimeZone = user.Settings?.TimeZone;
         var nowUtc = DateTime.UtcNow;

@@ -50,7 +50,12 @@ export function SettingsView() {
         <SyncSection
           isConnected={settingsView.isConnected}
           isGoogleAuthLoading={settingsView.isGoogleAuthLoading}
+          isDisconnectModalOpen={settingsView.isDisconnectModalOpen}
+          isDisconnecting={settingsView.isDisconnecting}
           onGoogleAction={settingsView.handleGoogleAction}
+          onDisconnectClick={settingsView.handleDisconnectClick}
+          onDisconnectConfirm={settingsView.handleDisconnectConfirm}
+          onDisconnectCancel={settingsView.handleDisconnectCancel}
         />
 
         <SettingsDivider />

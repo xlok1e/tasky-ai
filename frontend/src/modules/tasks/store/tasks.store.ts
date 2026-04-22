@@ -24,9 +24,11 @@ interface TasksState {
 	error: string | null
 	hasMore: boolean
 	dataVersion: number
+	loadedRanges: Set<string>
 
 	fetchTasks: () => Promise<void>
 	fetchMoreTasks: () => Promise<void>
+	fetchTasksForRange: (startFrom: Date, startTo: Date) => Promise<void>
 	_addOptimisticTask: (task: Task) => void
 	_removeOptimisticTask: (id: number) => void
 	addTask: (params: AddTaskParams) => Promise<void>
@@ -94,9 +96,10 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 	error: null,
 	hasMore: true,
 	dataVersion: 0,
+	loadedRanges: new Set<string>(),
 
 	fetchTasks: async () => {
-		set({ isLoading: true, error: null })
+		set({ isLoading: true, error: null, loadedRanges: new Set<string>() })
 		try {
 			const data = await fetchAllTasks()
 			set({
@@ -107,6 +110,33 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			})
 		} catch {
 			set({ isLoading: false, error: 'Не удалось загрузить задачи' })
+		}
+	},
+
+	fetchTasksForRange: async (startFrom: Date, startTo: Date) => {
+		const rangeKey = `${startFrom.toISOString().slice(0, 10)}:${startTo.toISOString().slice(0, 10)}`
+		if (get().loadedRanges.has(rangeKey)) return
+
+		try {
+			const response = await apiFetchTasks({
+				startFrom: startFrom.toISOString(),
+				startTo: startTo.toISOString(),
+				limit: 500,
+			})
+			const newTasks = response.map(mapTaskResponseToTask)
+			set(state => {
+				const existingIds = new Set(state.tasks.map(t => t.id))
+				const uniqueNew = newTasks.filter(t => !existingIds.has(t.id))
+				const loadedRanges = new Set(state.loadedRanges)
+				loadedRanges.add(rangeKey)
+				return {
+					tasks: [...state.tasks, ...uniqueNew],
+					loadedRanges,
+					dataVersion: state.dataVersion + 1,
+				}
+			})
+		} catch {
+			// best-effort, calendar already has globally loaded tasks
 		}
 	},
 
@@ -148,6 +178,23 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 		priority = TaskPriority.Low,
 		notifyAt = null,
 	}: AddTaskParams) => {
+		const tempId = -Date.now()
+		const optimisticTask: Task = {
+			id: tempId,
+			listId: listId ?? null,
+			title: title.trim(),
+			description: description ?? null,
+			isCompleted: false,
+			isAllDay: isAllDay ?? false,
+			startDate: startDate ?? null,
+			endDate: endDate ?? null,
+			deadline: null,
+			priority: priority ?? TaskPriority.Low,
+			notifyAt: notifyAt ?? null,
+		}
+
+		set(state => ({ tasks: [optimisticTask, ...state.tasks] }))
+
 		const request: CreateTaskRequest = {
 			title: title.trim(),
 			description,
@@ -157,6 +204,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 			listId: listId ?? null,
 			notifyAt: notifyAt ? notifyAt.toISOString() : null,
 		}
+
 		try {
 			const created = await apiCreateTask(request)
 			const task = {
@@ -164,7 +212,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 				...(isAllDay && { isAllDay: true }),
 			}
 			set(state => ({
-				tasks: [task, ...state.tasks],
+				tasks: state.tasks.map(t => (t.id === tempId ? task : t)),
 				dataVersion: state.dataVersion + 1,
 			}))
 
@@ -174,6 +222,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 				googleStore.syncSilent()
 			}
 		} catch {
+			set(state => ({ tasks: state.tasks.filter(t => t.id !== tempId) }))
 			toastMessage.showError('Не удалось создать задачу')
 		}
 	},

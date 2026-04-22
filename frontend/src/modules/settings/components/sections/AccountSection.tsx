@@ -4,13 +4,13 @@ import { SettingsSection } from '../ui/SettingsSection'
 
 interface AccountSectionProps {
 	username: string
-	phoneNumber: string
+	// phoneNumber: string
 	onLogout: () => void
 }
 
 export function AccountSection({
 	username,
-	phoneNumber,
+	// phoneNumber,
 	onLogout,
 }: AccountSectionProps) {
 	return (

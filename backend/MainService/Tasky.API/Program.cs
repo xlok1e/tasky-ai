@@ -88,7 +88,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 
     if (!string.IsNullOrEmpty(proxyHost) && !string.IsNullOrEmpty(proxyPort))
     {
-        var proxy = new WebProxy($"socks5://{proxyHost}:{proxyPort}");
+        var proxy = new WebProxy($"http://{proxyHost}:{proxyPort}");
         var handler = new SocketsHttpHandler { Proxy = proxy, UseProxy = true };
         var httpClient = new HttpClient(handler);
         return new TelegramBotClient(token, httpClient);

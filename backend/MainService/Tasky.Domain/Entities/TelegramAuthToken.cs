@@ -6,7 +6,7 @@ public class TelegramAuthToken
     public string Token { get; set; } = string.Empty;
     public int? UserId { get; set; }
     public bool IsUsed { get; set; } = false;
-    public string? PhoneNumber { get; set; }
+    // public string? PhoneNumber { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddMinutes(10);
 

@@ -27,7 +27,7 @@ public class UserService : IUserService
         return new UserProfileResponse(
             user.Id,
             user.Username,
-            MaskPhoneNumber(user.PhoneNumber),
+            null, // phone number is currently not used
             user.CreatedAt
         );
     }
@@ -103,19 +103,5 @@ public class UserService : IUserService
             settings.UseBuiltinCalendar,
             settings.OnboardingCompleted
         );
-    }
-
-    private static string? MaskPhoneNumber(string? phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone))
-            return null;
-
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-
-        if (digits.Length < 4)
-            return "+* *** *** ** **";
-
-        var lastFour = digits[^4..];
-        return $"+{digits[0]} *** *** {lastFour[..2]} {lastFour[2..]}";
     }
 }

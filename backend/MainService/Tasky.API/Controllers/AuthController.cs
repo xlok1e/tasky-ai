@@ -37,7 +37,6 @@ public class AuthController : ControllerBase
             Token = token,
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
             IsUsed = false,
-            PhoneNumber = null
         };
         _dbContext.TelegramAuthTokens.Add(auth);
         await _dbContext.SaveChangesAsync();

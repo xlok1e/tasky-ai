@@ -82,6 +82,20 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 {
     var token = builder.Configuration["Telegram:BotToken"]
         ?? throw new InvalidOperationException("Telegram bot token is not configured");
+
+    var proxyHost = builder.Configuration["Telegram:ProxyHost"];
+    var proxyPort = builder.Configuration["Telegram:ProxyPort"];
+
+    if (!string.IsNullOrEmpty(proxyHost) && !string.IsNullOrEmpty(proxyPort))
+    {
+        var httpClient = new HttpClient(new HttpClientHandler
+        {
+            Proxy = new WebProxy($"socks5://{proxyHost}:{proxyPort}"),
+            UseProxy = true
+        });
+        return new TelegramBotClient(token, httpClient);
+    }
+
     return new TelegramBotClient(token);
 });
 

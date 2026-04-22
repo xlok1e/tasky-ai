@@ -6,7 +6,7 @@ using Tasky.Infrastructure.Services;
 using Tasky.Application.Interfaces;
 using Tasky.Infrastructure.ExternalServices;
 using System.Net.Http.Headers;
-
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 const string CorsPolicyName = "AllowFrontendClients";

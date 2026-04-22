@@ -108,23 +108,29 @@ builder.Services.AddHttpClient("gptunnel", client =>
         new AuthenticationHeaderValue("Bearer", builder.Configuration["GPTunnel:ApiKey"]);
 });
 
-builder.Services.AddHttpClient("whisper")
-    .ConfigurePrimaryHttpMessageHandler(sp =>
+builder.Services.AddHttpClient("whisper", (sp, client) =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    client.BaseAddress = new Uri("https://api.groq.com/openai/");
+    client.DefaultRequestHeaders.Authorization =
+        new AuthenticationHeaderValue("Bearer", config["Groq:ApiKey"]);
+})
+.ConfigurePrimaryHttpMessageHandler(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var proxyHost = config["Groq:ProxyHost"] ?? config["Telegram:ProxyHost"];
+    var proxyPort = config["Groq:ProxyPort"] ?? config["Telegram:ProxyPort"];
+
+    var handler = new SocketsHttpHandler();
+
+    if (!string.IsNullOrEmpty(proxyHost) && !string.IsNullOrEmpty(proxyPort))
     {
-        var config = sp.GetRequiredService<IConfiguration>();
-        var proxyHost = config["Groq:ProxyHost"] ?? config["Telegram:ProxyHost"];
-        var proxyPort = config["Groq:ProxyPort"] ?? config["Telegram:ProxyPort"];
+        handler.Proxy = new WebProxy($"http://{proxyHost}:{proxyPort}");
+        handler.UseProxy = true;
+    }
 
-        var handler = new SocketsHttpHandler();
-
-        if (!string.IsNullOrEmpty(proxyHost) && !string.IsNullOrEmpty(proxyPort))
-        {
-            handler.Proxy = new WebProxy($"http://{proxyHost}:{proxyPort}");
-            handler.UseProxy = true;
-        }
-
-        return handler;
-    });
+    return handler;
+});
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer(options =>

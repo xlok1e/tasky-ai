@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
 [ApiController]
-[Route("q")]
+[Route("api/q")]
 [AllowAnonymous]
 public class TerminalAiController : ControllerBase
 {

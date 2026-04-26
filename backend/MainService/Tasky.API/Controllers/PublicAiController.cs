@@ -3,6 +3,7 @@ using System.Text.Json;
 
 [ApiController]
 [Route("q")]
+[AllowAnonymous]
 public class TerminalAiController : ControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
